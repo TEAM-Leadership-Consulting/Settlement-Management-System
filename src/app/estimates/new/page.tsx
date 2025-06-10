@@ -70,37 +70,37 @@ const EstimateForm = () => {
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const validateEmail = (email) => {
+  const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   };
 
-  const validatePhone = (phone) => {
+  const validatePhone = (phone: string): boolean => {
     const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
     const cleanPhone = phone.replace(/[\s\-\(\)\.]/g, '');
     return cleanPhone.length >= 10 && phoneRegex.test(cleanPhone);
   };
 
-  const formatPhone = (value) => {
+  const formatPhone = (value: string): string => {
     const numbers = value.replace(/\D/g, '');
     if (numbers.length <= 3) return numbers;
     if (numbers.length <= 6) return `(${numbers.slice(0, 3)}) ${numbers.slice(3)}`;
     return `(${numbers.slice(0, 3)}) ${numbers.slice(3, 6)}-${numbers.slice(6, 10)}`;
   };
 
-  const handleInputChange = (field, value) => {
+  const handleInputChange = (field: string, value: string | boolean): void => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }
   };
 
-  const handlePhoneChange = (value) => {
+  const handlePhoneChange = (value: string): void => {
     const formatted = formatPhone(value);
     handleInputChange('phone', formatted);
   };
 
-  const handleArrayChange = (field, value, checked) => {
+  const handleArrayChange = (field: string, value: string, checked: boolean): void => {
     setFormData(prev => ({
       ...prev,
       [field]: checked 
