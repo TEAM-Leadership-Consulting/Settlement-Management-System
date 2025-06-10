@@ -1,4 +1,4 @@
-'use client'
+'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,11 +10,11 @@ interface ProtectedRouteProps {
   showUnauthorized?: boolean; // Whether to show unauthorized message instead of redirect
 }
 
-export default function ProtectedRoute({ 
-  children, 
+export default function ProtectedRoute({
+  children,
   requiredRole,
   fallbackPath = '/login',
-  showUnauthorized = false
+  showUnauthorized = false,
 }: ProtectedRouteProps) {
   const { user, loading, userRole } = useAuth();
   const router = useRouter();
@@ -33,9 +33,9 @@ export default function ProtectedRoute({
 
       // If specific roles are required, check if user has permission
       if (requiredRole && requiredRole.length > 0) {
-        const hasRequiredRole = userRole && requiredRole.includes(userRole);
+        const hasRequiredRole = !!(userRole && requiredRole.includes(userRole));
         setIsAuthorized(hasRequiredRole);
-        
+
         if (!hasRequiredRole && !showUnauthorized) {
           router.push('/unauthorized');
         }
@@ -44,7 +44,15 @@ export default function ProtectedRoute({
         setIsAuthorized(true);
       }
     }
-  }, [user, loading, userRole, requiredRole, router, fallbackPath, showUnauthorized]);
+  }, [
+    user,
+    loading,
+    userRole,
+    requiredRole,
+    router,
+    fallbackPath,
+    showUnauthorized,
+  ]);
 
   // Show loading spinner while checking auth
   if (loading || isAuthorized === null) {
@@ -52,7 +60,9 @@ export default function ProtectedRoute({
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="text-muted-foreground">Verifying access permissions...</p>
+          <p className="text-muted-foreground">
+            Verifying access permissions...
+          </p>
         </div>
       </div>
     );
@@ -64,11 +74,13 @@ export default function ProtectedRoute({
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-4 p-8">
           <div className="text-6xl">🔒</div>
-          <h1 className="text-2xl font-bold text-foreground">Authentication Required</h1>
+          <h1 className="text-2xl font-bold text-foreground">
+            Authentication Required
+          </h1>
           <p className="text-muted-foreground max-w-md">
             You need to be logged in to access this page.
           </p>
-          <button 
+          <button
             onClick={() => router.push(fallbackPath)}
             className="bg-primary text-primary-foreground px-6 py-2 rounded-md hover:bg-primary/90 transition-colors"
           >
@@ -90,18 +102,19 @@ export default function ProtectedRoute({
             You don&apos;t have the required permissions to access this page.
             {requiredRole && (
               <span className="block mt-2 text-sm">
-                Required role{requiredRole.length > 1 ? 's' : ''}: {requiredRole.join(', ')}
+                Required role{requiredRole.length > 1 ? 's' : ''}:{' '}
+                {requiredRole.join(', ')}
               </span>
             )}
           </p>
           <div className="flex gap-3 justify-center">
-            <button 
+            <button
               onClick={() => router.back()}
               className="bg-secondary text-secondary-foreground px-6 py-2 rounded-md hover:bg-secondary/90 transition-colors"
             >
               Go Back
             </button>
-            <button 
+            <button
               onClick={() => router.push('/dashboard')}
               className="bg-primary text-primary-foreground px-6 py-2 rounded-md hover:bg-primary/90 transition-colors"
             >
