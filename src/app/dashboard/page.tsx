@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import ProtectedRoute from '@/components/ProtectedRoute';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { 
@@ -47,7 +47,7 @@ interface Alert {
 }
 
 const Dashboard = () => {
-  const { user, signOut, userProfile } = useAuth();
+  const { signOut, userProfile } = useAuth();
   const router = useRouter();
   const [stats, setStats] = useState<DashboardStats>({
     totalCases: 0,

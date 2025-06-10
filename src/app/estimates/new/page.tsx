@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Calendar, Clock, DollarSign, Users, FileText, Mail, Phone, MapPin, Plus, Trash2 } from 'lucide-react';
+import { Clock, DollarSign, Users, FileText, Mail, Phone, Plus, Trash2 } from 'lucide-react';
 
 const EstimateForm = () => {
   const [formData, setFormData] = useState({
@@ -191,7 +191,8 @@ const EstimateForm = () => {
       alert('Estimate request submitted successfully! We will contact you within 24 hours.');
       // Reset form would go here
     } catch (error) {
-      alert('Error submitting request. Please try again.');
+  	console.error('Error submitting:', error); // Now it's used!
+ 	 alert('Error submitting request. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
