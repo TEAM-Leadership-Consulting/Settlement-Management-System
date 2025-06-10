@@ -170,12 +170,15 @@ const EstimateForm = () => {
   };
 
   const handleArrayChange = (field: string, value: string, checked: boolean): void => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: checked 
-        ? [...((prev as any)[field] || []), value]
-        : ((prev as any)[field] || []).filter((item: string) => item !== value)
-    }));
+    setFormData(prev => {
+      const currentArray = (prev as Record<string, string[]>)[field] || [];
+      return {
+        ...prev,
+        [field]: checked 
+          ? [...currentArray, value]
+          : currentArray.filter((item: string) => item !== value)
+      };
+    });
   };
 
   const addAdditionalContact = (): void => {
