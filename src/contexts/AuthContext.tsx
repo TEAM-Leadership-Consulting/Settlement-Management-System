@@ -1,42 +1,103 @@
 'use client'
+import { createContext, useContext, useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import type { User } from '@supabase/supabase-js';
 
-import React, { createContext, useContext } from 'react';
-
-interface AuthContextProps {
-  user: any;
-  session: any;
-  loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signOut: () => Promise<void>;
-  userRole: string | null;
-  userProfile: any;
+interface UserProfile {
+  user_id: string;
+  username: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+  department: string;
+  active: boolean;
 }
 
-const AuthContext = createContext<AuthContextProps | undefined>(undefined);
+interface AuthContextType {
+  user: User | null;
+  userProfile: UserProfile | null;
+  userRole: string | null;
+  loading: boolean;
+  signOut: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  // Simple hardcoded values - no state changes to cause reloads
-  const value = {
-    user: { id: 'test-user', email: 'admin@settlement.com' },
-    session: { user: { id: 'test-user' } },
-    loading: false,
-    signIn: async () => ({ error: null }),
-    signOut: async () => { window.location.href = '/'; },
-    userRole: 'admin',
-    userProfile: {
-      user_id: 'test-user',
-      first_name: 'Admin',
-      last_name: 'User',
-      role: 'admin',
-      email: 'admin@settlement.com'
+  const [user, setUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchUserProfile(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        await fetchUserProfile(session.user.id);
+      } else {
+        setUserProfile(null);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchUserProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching user profile:', error);
+      } else {
+        setUserProfile(data);
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  const signOut = async () => {
+    setLoading(true);
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+      setUserProfile(null);
+    } catch (error) {
+      console.error('Error signing out:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const value = {
+    user,
+    userProfile,
+    userRole: userProfile?.role || null,
+    loading,
+    signOut,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

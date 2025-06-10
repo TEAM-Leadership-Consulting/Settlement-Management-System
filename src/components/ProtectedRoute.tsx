@@ -87,7 +87,7 @@ export default function ProtectedRoute({
           <div className="text-6xl">⛔</div>
           <h1 className="text-2xl font-bold text-foreground">Access Denied</h1>
           <p className="text-muted-foreground max-w-md">
-            You don't have the required permissions to access this page.
+            You don&apos;t have the required permissions to access this page.
             {requiredRole && (
               <span className="block mt-2 text-sm">
                 Required role{requiredRole.length > 1 ? 's' : ''}: {requiredRole.join(', ')}
