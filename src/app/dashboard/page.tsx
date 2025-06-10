@@ -14,6 +14,14 @@ import {
   Bell
 } from 'lucide-react';
 
+interface RecentCase {
+  case_id: number;
+  case_number: string;
+  case_title: string;
+  case_status: string;
+  created_date: string;
+}
+
 interface DashboardStats {
   totalCases: number;
   activeCases: number;
@@ -24,8 +32,6 @@ interface DashboardStats {
 }
 
 const Dashboard = () => {
-  // Initialize Supabase client
-  
   const [stats, setStats] = useState<DashboardStats>({
     totalCases: 0,
     activeCases: 0,
@@ -35,7 +41,7 @@ const Dashboard = () => {
     pendingPayments: 0
   });
   const [loading, setLoading] = useState(true);
-  const [recentCases, setRecentCases] = useState([]);
+  const [recentCases, setRecentCases] = useState<RecentCase[]>([]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -85,12 +91,12 @@ const Dashboard = () => {
   };
 
   const StatCard = ({ title, value, icon: Icon, color, trend }: {
-  title: string;
-  value: number;
-  icon: React.ComponentType<{ className?: string }>;
-  color: string;
-  trend?: string;
-}) => (
+    title: string;
+    value: number;
+    icon: React.ComponentType<{ className?: string }>;
+    color: string;
+    trend?: string;
+  }) => (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <div className="flex items-center justify-between">
         <div>
@@ -150,7 +156,7 @@ const Dashboard = () => {
         {/* Welcome Section */}
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-gray-900">Welcome back, Christina!</h2>
-	  <p className="text-gray-600">Here&apos;s what&apos;s happening with your settlements today.</p>
+          <p className="text-gray-600">Here&apos;s what&apos;s happening with your settlements today.</p>
         </div>
 
         {/* Stats Grid */}
@@ -208,7 +214,7 @@ const Dashboard = () => {
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Cases</h3>
             {recentCases.length > 0 ? (
               <div className="space-y-4">
-                {recentCases.map((case_item: { case_id: number; case_title: string; case_number: string; case_status: string }) => (
+                {recentCases.map((case_item: RecentCase) => (
                   <div key={case_item.case_id} className="flex items-center justify-between p-3 border border-gray-100 rounded-lg">
                     <div>
                       <p className="font-medium text-gray-900">{case_item.case_title}</p>
