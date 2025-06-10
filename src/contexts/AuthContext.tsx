@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface AuthContextType {
   user: User | null;
   session: Session | null;
