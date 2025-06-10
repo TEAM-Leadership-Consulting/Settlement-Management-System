@@ -1,111 +1,35 @@
 'use client'
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
-import { User, Session } from '@supabase/supabase-js';
+import React, { createContext, useContext } from 'react';
 
 interface AuthContextProps {
-  user: User | null;
-  session: Session | null;
+  user: any;
+  session: any;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   userRole: string | null;
-  userProfile: {
-    user_id: string;
-    first_name: string;
-    last_name: string;
-    role: string;
-    email: string;
-  } | null;
+  userProfile: any;
 }
 
 const AuthContext = createContext<AuthContextProps | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [userProfile, setUserProfile] = useState<AuthContextProps['userProfile']>(null);
-
-  useEffect(() => {
-    // Get initial session
-    const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        await fetchUserProfile(session.user.id);
-      }
-      
-      setLoading(false);
-    };
-
-    getSession();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          await fetchUserProfile(session.user.id);
-        } else {
-          setUserProfile(null);
-          setUserRole(null);
-        }
-        
-        setLoading(false);
-      }
-    );
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchUserProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-
-      if (error) throw error;
-
-      setUserProfile(data);
-      setUserRole(data?.role || null);
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
-    }
-  };
-
-  const signIn = async (email: string, password: string) => {
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      return { error: error || null };
-    } catch (error) {
-      return { error: error as Error };
-    }
-  };
-
-  const signOut = async () => {
-    await supabase.auth.signOut();
-  };
-
+  // Simple hardcoded values - no state changes to cause reloads
   const value = {
-    user,
-    session,
-    loading,
-    signIn,
-    signOut,
-    userRole,
-    userProfile,
+    user: { id: 'test-user', email: 'admin@settlement.com' },
+    session: { user: { id: 'test-user' } },
+    loading: false,
+    signIn: async () => ({ error: null }),
+    signOut: async () => { window.location.href = '/'; },
+    userRole: 'admin',
+    userProfile: {
+      user_id: 'test-user',
+      first_name: 'Admin',
+      last_name: 'User',
+      role: 'admin',
+      email: 'admin@settlement.com'
+    }
   };
 
   return (

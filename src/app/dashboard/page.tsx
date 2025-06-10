@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
@@ -138,8 +139,8 @@ const Dashboard = () => {
   }
 
   return (
-    <ProtectedRoute>
-      <div className="min-h-screen bg-gray-50">
+   <ProtectedRoute>
+    <div className="min-h-screen bg-gray-50">
         {/* Header */}
         <header className="bg-white shadow-sm border-b border-gray-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -220,24 +221,28 @@ const Dashboard = () => {
             />
           </div>
 
-          {/* Quick Actions */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                <Plus className="h-5 w-5 text-blue-600 mr-3" />
-                <span className="text-gray-900 font-medium">New Case</span>
-              </button>
-              <button className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                <Users className="h-5 w-5 text-green-600 mr-3" />
-                <span className="text-gray-900 font-medium">Add Party</span>
-              </button>
-              <button className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                <FileText className="h-5 w-5 text-purple-600 mr-3" />
-                <span className="text-gray-900 font-medium">Upload Document</span>
-              </button>
-            </div>
-          </div>
+        {/* Quick Actions */}
+<div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+  <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <Link href="/estimates/new" className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+      <Plus className="h-5 w-5 text-blue-600 mr-3" />
+      <span className="text-gray-900 font-medium">Create Estimate</span>
+    </Link>
+    <button className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+      <Plus className="h-5 w-5 text-green-600 mr-3" />
+      <span className="text-gray-900 font-medium">New Case</span>
+    </button>
+    <button className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+      <Users className="h-5 w-5 text-purple-600 mr-3" />
+      <span className="text-gray-900 font-medium">Add Party</span>
+    </button>
+    <button className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+      <FileText className="h-5 w-5 text-orange-600 mr-3" />
+      <span className="text-gray-900 font-medium">Upload Document</span>
+    </button>
+  </div>
+</div>
 
           {/* Recent Activity & Case Status */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -316,9 +321,9 @@ const Dashboard = () => {
             <p>Settlement Management System - Built with Next.js & Supabase</p>
           </div>
         </main>
-      </div>
-    </ProtectedRoute>
-  );
+          </div>
+   </ProtectedRoute>
+);
 };
 
 export default Dashboard;
