@@ -87,7 +87,7 @@ const Dashboard = () => {
   const StatCard = ({ title, value, icon: Icon, color, trend }: {
   title: string;
   value: number;
-  icon: any;
+  icon: React.ComponentType<{ className?: string }>;
   color: string;
   trend?: string;
 }) => (
