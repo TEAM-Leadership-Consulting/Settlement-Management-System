@@ -35,7 +35,7 @@ interface DashboardStats {
 }
 
 const Dashboard = () => {
-  const { user, signOut, userProfile } = useAuth();
+  const { signOut, userProfile } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
     totalCases: 0,
     activeCases: 0,
