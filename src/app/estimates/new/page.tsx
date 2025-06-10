@@ -11,8 +11,77 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Clock, DollarSign, Users, FileText, Mail, Phone, Plus, Trash2 } from 'lucide-react';
 
+interface FormData {
+  clientType: string;
+  companyName: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  website: string;
+  preferredContact: string;
+  additionalContacts: Array<{
+    name: string;
+    email: string;
+    phone: string;
+    title: string;
+  }>;
+  caseTitle: string;
+  caseFriendlyTitle: string;
+  caseType: string;
+  estimatedClaimants: string;
+  estimatedSettlement: string;
+  jurisdiction: string;
+  courtName: string;
+  projectScope: string[];
+  noticeFormsCount: string;
+  costPerForm: string;
+  claimsToProcess: string;
+  costPerProcessedClaim: string;
+  costPerPayment: string;
+  callCenterTypes: string[];
+  liveAgentHourlyRate: string;
+  liveAgentEstimatedHours: string;
+  ivrCost: string;
+  multipleLanguagesCallCenter: boolean;
+  callCenterLanguages: string[];
+  costPerAdditionalLanguage: string;
+  websiteTypes: string[];
+  staticSiteCost: string;
+  dataCaptureSiteCost: string;
+  reportingTypes: string[];
+  standardReportsCost: string;
+  customReportingHourlyRate: string;
+  customReportingEstimatedHours: string;
+  filesToImport: string;
+  dataImportCost: string;
+  needDataCleaning: boolean;
+  dataCleaningHourlyRate: string;
+  needNCOA: boolean;
+  ncoaCostPerRecord: string;
+  emailsToSend: string;
+  emailCostPer: string;
+  timeline: string;
+  specialRequirements: Array<{
+    description: string;
+    hourlyRate: string;
+    estimatedHours: string;
+  }>;
+  isCappedCase: boolean;
+  caseManagerHourlyRate: string;
+  projectCoordinatorHourlyRate: string;
+  otherRoleHourlyRate: string;
+  otherRoleDescription: string;
+  budget: string;
+  startDate: string;
+  paymentsToDistribute?: string;
+}
+
+interface FormErrors {
+  [key: string]: string;
+}
+
 const EstimateForm = () => {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     clientType: '',
     companyName: '',
     contactName: '',
@@ -67,7 +136,7 @@ const EstimateForm = () => {
     startDate: ''
   });
 
-  const [errors, setErrors] = useState({});
+  const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const validateEmail = (email: string): boolean => {
@@ -88,7 +157,7 @@ const EstimateForm = () => {
     return `(${numbers.slice(0, 3)}) ${numbers.slice(3, 6)}-${numbers.slice(6, 10)}`;
   };
 
-  const handleInputChange = (field: string, value: string | boolean): void => {
+  const handleInputChange = (field: keyof FormData, value: string | boolean | string[]): void => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -104,26 +173,26 @@ const EstimateForm = () => {
     setFormData(prev => ({
       ...prev,
       [field]: checked 
-        ? [...(prev[field] || []), value]
-        : (prev[field] || []).filter(item => item !== value)
+        ? [...((prev as any)[field] || []), value]
+        : ((prev as any)[field] || []).filter((item: string) => item !== value)
     }));
   };
 
-  const addAdditionalContact = () => {
+  const addAdditionalContact = (): void => {
     setFormData(prev => ({
       ...prev,
       additionalContacts: [...prev.additionalContacts, { name: '', email: '', phone: '', title: '' }]
     }));
   };
 
-  const removeAdditionalContact = (index) => {
+  const removeAdditionalContact = (index: number): void => {
     setFormData(prev => ({
       ...prev,
       additionalContacts: prev.additionalContacts.filter((_, i) => i !== index)
     }));
   };
 
-  const updateAdditionalContact = (index, field, value) => {
+  const updateAdditionalContact = (index: number, field: string, value: string): void => {
     setFormData(prev => ({
       ...prev,
       additionalContacts: prev.additionalContacts.map((contact, i) => 
@@ -132,14 +201,14 @@ const EstimateForm = () => {
     }));
   };
 
-  const addSpecialRequirement = () => {
+  const addSpecialRequirement = (): void => {
     setFormData(prev => ({
       ...prev,
       specialRequirements: [...prev.specialRequirements, { description: '', hourlyRate: '', estimatedHours: '' }]
     }));
   };
 
-  const removeSpecialRequirement = (index) => {
+  const removeSpecialRequirement = (index: number): void => {
     if (formData.specialRequirements.length > 1) {
       setFormData(prev => ({
         ...prev,
@@ -148,7 +217,7 @@ const EstimateForm = () => {
     }
   };
 
-  const updateSpecialRequirement = (index, field, value) => {
+  const updateSpecialRequirement = (index: number, field: string, value: string): void => {
     setFormData(prev => ({
       ...prev,
       specialRequirements: prev.specialRequirements.map((req, i) => 
@@ -157,8 +226,8 @@ const EstimateForm = () => {
     }));
   };
 
-  const validateForm = () => {
-    const newErrors = {};
+  const validateForm = (): boolean => {
+    const newErrors: FormErrors = {};
     if (!formData.companyName.trim()) newErrors.companyName = 'Law firm or company name is required';
     if (!formData.contactName.trim()) newErrors.contactName = 'Contact name is required';
     if (!formData.email.trim()) {
@@ -181,7 +250,7 @@ const EstimateForm = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (!validateForm()) return;
     setIsSubmitting(true);
@@ -191,8 +260,8 @@ const EstimateForm = () => {
       alert('Estimate request submitted successfully! We will contact you within 24 hours.');
       // Reset form would go here
     } catch (error) {
-  	console.error('Error submitting:', error); // Now it's used!
- 	 alert('Error submitting request. Please try again.');
+      console.error('Error submitting:', error);
+      alert('Error submitting request. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -591,7 +660,7 @@ const EstimateForm = () => {
                           <Label htmlFor="paymentsToDistribute">Estimated number of payments</Label>
                           <Input
                             id="paymentsToDistribute"
-                            value={formData.paymentsToDistribute}
+                            value={formData.paymentsToDistribute || ''}
                             onChange={(e) => handleInputChange('paymentsToDistribute', e.target.value)}
                             placeholder="e.g., 500"
                             className="mt-1"
