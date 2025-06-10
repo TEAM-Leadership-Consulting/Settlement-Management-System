@@ -1,10 +1,18 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
+interface CaseType {
+  case_type_id: number
+  case_type_name: string
+  case_type_code: string
+  description: string
+}
+
 export default function TestDatabase() {
-  const [caseTypes, setCaseTypes] = useState<any[]>([])
+  const [caseTypes, setCaseTypes] = useState<CaseType[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -21,8 +29,9 @@ export default function TestDatabase() {
         }
 
         setCaseTypes(data || [])
-      } catch (err: any) {
-        setError(err.message)
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred'
+        setError(errorMessage)
       } finally {
         setLoading(false)
       }
@@ -84,7 +93,7 @@ export default function TestDatabase() {
           </div>
 
           <div className="mt-8 p-4 bg-green-50 rounded-lg">
-            <h2 className="text-lg font-semibold text-green-800 mb-2">✅ What's Working:</h2>
+            <h2 className="text-lg font-semibold text-green-800 mb-2">✅ What&apos;s Working:</h2>
             <ul className="list-disc list-inside text-green-700 space-y-1">
               <li>Next.js 14 application</li>
               <li>Supabase database connection</li>
@@ -96,12 +105,12 @@ export default function TestDatabase() {
           </div>
 
           <div className="mt-6 text-center">
-            <a 
+            <Link 
               href="/"
               className="inline-block bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
             >
               ← Back to Home
-            </a>
+            </Link>
           </div>
         </div>
       </div>
