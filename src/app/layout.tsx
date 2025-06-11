@@ -1,46 +1,52 @@
-import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
-import "./globals.css";
-import { AuthProvider } from "@/contexts/AuthContext";
+import type { Metadata, Viewport } from 'next';
+import { Inter, JetBrains_Mono } from 'next/font/google';
+import './globals.css';
+import { AuthProvider } from '@/contexts/AuthContext';
 
 const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
 });
 
 const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
-  display: "swap",
+  subsets: ['latin'],
+  variable: '--font-jetbrains-mono',
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
   title: {
-    default: "Settlement Management System",
-    template: "%s | Settlement Management System"
+    default: 'Settlement Management System',
+    template: '%s | Settlement Management System',
   },
-  description: "Professional settlement case management system for efficient case administration and party management",
-  keywords: ["settlement", "case management", "legal", "administration"],
-  authors: [{ name: "Settlement Management Team" }],
-  creator: "Settlement Management System",
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
+  description:
+    'Professional settlement case management system for efficient case administration and party management',
+  keywords: ['settlement', 'case management', 'legal', 'administration'],
+  authors: [{ name: 'Settlement Management Team' }],
+  creator: 'Settlement Management System',
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  ),
   openGraph: {
-    type: "website",
-    locale: "en_US",
-    url: "/",
-    siteName: "Settlement Management System",
-    title: "Settlement Management System",
-    description: "Professional settlement case management system",
+    type: 'website',
+    locale: 'en_US',
+    url: '/',
+    siteName: 'Settlement Management System',
+    title: 'Settlement Management System',
+    description: 'Professional settlement case management system',
   },
   robots: {
     index: false,
     follow: false,
   },
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-  },
+  // Viewport removed from metadata - now in separate export below
+};
+
+// Separate viewport export (fixes Next.js 15 warning)
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -56,9 +62,7 @@ export default function RootLayout({
       >
         <AuthProvider>
           <div className="relative flex min-h-screen flex-col">
-            <main className="flex-1">
-              {children}
-            </main>
+            <main className="flex-1">{children}</main>
           </div>
         </AuthProvider>
       </body>
