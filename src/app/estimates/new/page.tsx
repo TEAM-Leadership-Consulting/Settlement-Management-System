@@ -1,6 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +27,9 @@ import {
   Phone,
   Plus,
   Trash2,
+  AlertCircle,
+  ArrowLeft,
+  Download,
 } from 'lucide-react';
 
 interface FormData {
@@ -95,7 +101,35 @@ interface FormErrors {
   [key: string]: string;
 }
 
+// Define the type for estimate data used in PDF generation
+interface EstimateData {
+  client_type?: string;
+  company_name?: string;
+  contact_name?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  case_title?: string;
+  case_type?: string;
+  jurisdiction?: string;
+  estimated_claimants?: string;
+  estimated_settlement?: string;
+  project_scope?: string[];
+  timeline?: string;
+  budget?: string;
+  start_date?: string;
+  special_requirements?: Array<{
+    description: string;
+    hourlyRate: string;
+    estimatedHours: string;
+  }>;
+}
+
 const EstimateForm = () => {
+  const { userProfile } = useAuth();
+  const router = useRouter();
+
+  // State declarations
   const [formData, setFormData] = useState<FormData>({
     clientType: '',
     companyName: '',
@@ -155,7 +189,10 @@ const EstimateForm = () => {
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
+  // Helper functions
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
@@ -178,6 +215,7 @@ const EstimateForm = () => {
     )}`;
   };
 
+  // Event handlers
   const handleInputChange = (
     field: keyof FormData,
     value: string | boolean | string[]
@@ -194,19 +232,18 @@ const EstimateForm = () => {
   };
 
   const handleArrayChange = (
-    field: string,
+    field: keyof FormData,
     value: string,
     checked: boolean
   ): void => {
     setFormData((prev) => {
-      const currentArray =
-        (prev as unknown as Record<string, string[]>)[field] || [];
+      const currentArray = (prev[field] as string[]) || [];
       return {
         ...prev,
         [field]: checked
           ? [...currentArray, value]
           : currentArray.filter((item: string) => item !== value),
-      };
+      } as FormData;
     });
   };
 
@@ -274,6 +311,226 @@ const EstimateForm = () => {
     }));
   };
 
+  const handleCancel = () => {
+    if (
+      confirm('Are you sure you want to cancel? All progress will be lost.')
+    ) {
+      router.push('/dashboard');
+    }
+  };
+
+  const generatePDF = async (
+    estimateData: EstimateData,
+    estimateNumber: string
+  ) => {
+    try {
+      // Create HTML content for PDF
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Settlement Management System - Estimate ${estimateNumber}</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
+            .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
+            .section { margin-bottom: 25px; }
+            .section-title { font-size: 18px; font-weight: bold; color: #2563eb; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-bottom: 15px; }
+            .field-group { margin-bottom: 15px; }
+            .field-label { font-weight: bold; color: #374151; }
+            .field-value { margin-left: 10px; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+            .list-item { margin-left: 20px; margin-bottom: 5px; }
+            .footer { margin-top: 40px; text-align: center; font-size: 12px; color: #666; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Settlement Management System</h1>
+            <h2>Project Estimate ${estimateNumber}</h2>
+            <p>Generated on ${new Date().toLocaleDateString()}</p>
+          </div>
+
+          <div class="section">
+            <div class="section-title">Client Information</div>
+            <div class="grid">
+              <div class="field-group">
+                <span class="field-label">Client Type:</span>
+                <span class="field-value">${
+                  estimateData.client_type || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Company:</span>
+                <span class="field-value">${
+                  estimateData.company_name || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Contact Name:</span>
+                <span class="field-value">${
+                  estimateData.contact_name || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Email:</span>
+                <span class="field-value">${
+                  estimateData.email || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Phone:</span>
+                <span class="field-value">${
+                  estimateData.phone || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Website:</span>
+                <span class="field-value">${
+                  estimateData.website || 'Not specified'
+                }</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">Case Information</div>
+            <div class="field-group">
+              <span class="field-label">Case Title:</span>
+              <span class="field-value">${
+                estimateData.case_title || 'Not specified'
+              }</span>
+            </div>
+            <div class="grid">
+              <div class="field-group">
+                <span class="field-label">Case Type:</span>
+                <span class="field-value">${
+                  estimateData.case_type || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Jurisdiction:</span>
+                <span class="field-value">${
+                  estimateData.jurisdiction || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Estimated Claimants:</span>
+                <span class="field-value">${
+                  estimateData.estimated_claimants || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Estimated Settlement:</span>
+                <span class="field-value">${
+                  estimateData.estimated_settlement || 'Not specified'
+                }</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">Project Scope</div>
+            ${
+              estimateData.project_scope &&
+              estimateData.project_scope.length > 0
+                ? estimateData.project_scope
+                    .map(
+                      (scope: string) =>
+                        `<div class="list-item">• ${scope}</div>`
+                    )
+                    .join('')
+                : '<div class="field-value">No project scope specified</div>'
+            }
+          </div>
+
+          <div class="section">
+            <div class="section-title">Timeline & Budget</div>
+            <div class="grid">
+              <div class="field-group">
+                <span class="field-label">Timeline:</span>
+                <span class="field-value">${
+                  estimateData.timeline || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Budget Range:</span>
+                <span class="field-value">${
+                  estimateData.budget || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Preferred Start Date:</span>
+                <span class="field-value">${
+                  estimateData.start_date || 'Not specified'
+                }</span>
+              </div>
+            </div>
+          </div>
+
+          ${
+            estimateData.special_requirements &&
+            estimateData.special_requirements.length > 0 &&
+            estimateData.special_requirements[0]?.description
+              ? `
+            <div class="section">
+              <div class="section-title">Special Requirements</div>
+              ${estimateData.special_requirements
+                .map(
+                  (req, index) => `
+                <div class="field-group">
+                  <span class="field-label">Requirement ${index + 1}:</span>
+                  <div class="field-value">${
+                    req?.description || 'No description'
+                  }</div>
+                  ${
+                    req?.hourlyRate
+                      ? `<div class="field-value">Rate: ${req.hourlyRate}</div>`
+                      : ''
+                  }
+                  ${
+                    req?.estimatedHours
+                      ? `<div class="field-value">Hours: ${req.estimatedHours}</div>`
+                      : ''
+                  }
+                </div>
+              `
+                )
+                .join('')}
+            </div>
+          `
+              : ''
+          }
+
+          <div class="footer">
+            <p>Settlement Management System - Professional Legal Administration</p>
+            <p>Contact: (555) 123-4567 | estimates@settlement.com</p>
+            <p>This estimate is valid for 30 days from the date of generation.</p>
+          </div>
+        </body>
+        </html>
+      `;
+
+      // Create blob and download
+      const blob = new Blob([htmlContent], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `estimate-${estimateNumber}.html`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      // Show success message
+      alert(
+        `Estimate ${estimateNumber} has been downloaded as an HTML file. You can open this file in any browser and print it as a PDF, or use online HTML-to-PDF converters for sharing.`
+      );
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error generating PDF. Please try again.');
+    }
+  };
+
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
     if (!formData.companyName.trim())
@@ -305,19 +562,173 @@ const EstimateForm = () => {
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
-    if (!validateForm()) return;
+    if (!validateForm()) {
+      setError('Please correct the errors below');
+      return;
+    }
+
+    setLoading(true);
     setIsSubmitting(true);
+    setError(null);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      alert(
-        'Estimate request submitted successfully! We will contact you within 24 hours.'
+      // Generate estimate number
+      const estimateNumber = `EST-${new Date().getFullYear()}-${Date.now()
+        .toString()
+        .slice(-6)}`;
+
+      // Prepare data for database - map form fields to database schema
+      const estimateData = {
+        estimate_number: estimateNumber,
+        // Map form fields to existing database columns
+        client_type: formData.clientType,
+        company_name: formData.companyName,
+        contact_name: formData.contactName,
+        email: formData.email,
+        phone: formData.phone,
+        website: formData.website || null,
+        preferred_contact: formData.preferredContact || null,
+        case_title: formData.caseTitle,
+        case_friendly_title: formData.caseFriendlyTitle || null,
+        case_type: formData.caseType,
+        estimated_claimants: formData.estimatedClaimants,
+        estimated_settlement: formData.estimatedSettlement || null,
+        jurisdiction: formData.jurisdiction || null,
+        court_name: formData.courtName || null,
+        project_scope: formData.projectScope,
+        timeline: formData.timeline || null,
+        budget: formData.budget || null,
+        start_date: formData.startDate || null,
+        special_requirements: formData.specialRequirements,
+        additional_contacts: formData.additionalContacts,
+        form_data: formData, // Store complete form data as backup
+
+        // Map to legacy database columns for backward compatibility
+        client_company: formData.companyName,
+        client_contact_name: formData.contactName,
+        client_email: formData.email,
+        client_phone: formData.phone,
+        case_name: formData.caseTitle,
+        case_description: formData.caseFriendlyTitle || null,
+        estimated_class_size: formData.estimatedClaimants
+          ? parseInt(formData.estimatedClaimants.replace(/[^\d]/g, '')) || null
+          : null,
+        estimated_settlement_amount: formData.estimatedSettlement
+          ? parseFloat(formData.estimatedSettlement.replace(/[^\d.]/g, '')) ||
+            null
+          : null,
+
+        // Default values for required fields
+        estimate_status: 'draft',
+        created_by: userProfile?.user_id || null,
+        notes: `Timeline: ${formData.timeline || 'Not specified'}\nBudget: ${
+          formData.budget || 'Not specified'
+        }`,
+      };
+
+      // Insert into Supabase
+      const { error: dbError } = await supabase
+        .from('estimates')
+        .insert([estimateData])
+        .select()
+        .single();
+
+      if (dbError) throw dbError;
+
+      // Generate PDF
+      await generatePDF(
+        {
+          client_type: formData.clientType,
+          company_name: formData.companyName,
+          contact_name: formData.contactName,
+          email: formData.email,
+          phone: formData.phone,
+          website: formData.website,
+          case_title: formData.caseTitle,
+          case_type: formData.caseType,
+          jurisdiction: formData.jurisdiction,
+          estimated_claimants: formData.estimatedClaimants,
+          estimated_settlement: formData.estimatedSettlement,
+          project_scope: formData.projectScope,
+          timeline: formData.timeline,
+          budget: formData.budget,
+          start_date: formData.startDate,
+          special_requirements: formData.specialRequirements,
+        },
+        estimateNumber
       );
-      // Reset form would go here
+
+      alert(
+        `Estimate ${estimateNumber} submitted successfully! We will contact you within 24 hours.`
+      );
+
+      // Reset form completely
+      setFormData({
+        clientType: '',
+        companyName: '',
+        contactName: '',
+        email: '',
+        phone: '',
+        website: '',
+        preferredContact: '',
+        additionalContacts: [],
+        caseTitle: '',
+        caseFriendlyTitle: '',
+        caseType: '',
+        estimatedClaimants: '',
+        estimatedSettlement: '',
+        jurisdiction: '',
+        courtName: '',
+        projectScope: [],
+        noticeFormsCount: '',
+        costPerForm: '',
+        claimsToProcess: '',
+        costPerProcessedClaim: '',
+        costPerPayment: '',
+        callCenterTypes: [],
+        liveAgentHourlyRate: '',
+        liveAgentEstimatedHours: '',
+        ivrCost: '',
+        multipleLanguagesCallCenter: false,
+        callCenterLanguages: [],
+        costPerAdditionalLanguage: '',
+        websiteTypes: [],
+        staticSiteCost: '',
+        dataCaptureSiteCost: '',
+        reportingTypes: [],
+        standardReportsCost: '',
+        customReportingHourlyRate: '',
+        customReportingEstimatedHours: '',
+        filesToImport: '',
+        dataImportCost: '',
+        needDataCleaning: false,
+        dataCleaningHourlyRate: '',
+        needNCOA: false,
+        ncoaCostPerRecord: '',
+        emailsToSend: '',
+        emailCostPer: '',
+        timeline: '',
+        specialRequirements: [
+          { description: '', hourlyRate: '', estimatedHours: '' },
+        ],
+        isCappedCase: false,
+        caseManagerHourlyRate: '',
+        projectCoordinatorHourlyRate: '',
+        otherRoleHourlyRate: '',
+        otherRoleDescription: '',
+        budget: '',
+        startDate: '',
+      });
+
+      // Redirect to dashboard after success
+      setTimeout(() => {
+        router.push('/dashboard');
+      }, 2000);
     } catch (error) {
-      console.error('Error submitting:', error);
-      alert('Error submitting request. Please try again.');
+      console.error('Error submitting estimate:', error);
+      setError('Error submitting estimate. Please try again.');
     } finally {
+      setLoading(false);
       setIsSubmitting(false);
     }
   };
@@ -326,6 +737,47 @@ const EstimateForm = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <Button
+              variant="outline"
+              onClick={handleCancel}
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Dashboard
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() =>
+                generatePDF(
+                  {
+                    client_type: formData.clientType,
+                    company_name: formData.companyName,
+                    contact_name: formData.contactName,
+                    email: formData.email,
+                    phone: formData.phone,
+                    website: formData.website,
+                    case_title: formData.caseTitle,
+                    case_type: formData.caseType,
+                    jurisdiction: formData.jurisdiction,
+                    estimated_claimants: formData.estimatedClaimants,
+                    estimated_settlement: formData.estimatedSettlement,
+                    project_scope: formData.projectScope,
+                    timeline: formData.timeline,
+                    budget: formData.budget,
+                    start_date: formData.startDate,
+                    special_requirements: formData.specialRequirements,
+                  },
+                  'PREVIEW'
+                )
+              }
+              className="flex items-center gap-2"
+              disabled={loading}
+            >
+              <Download className="h-4 w-4" />
+              Preview/Download
+            </Button>
+          </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
             Settlement Management System
           </h1>
@@ -333,6 +785,16 @@ const EstimateForm = () => {
         </div>
 
         <div className="space-y-8">
+          {/* Error Message */}
+          {error && (
+            <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-center">
+                <AlertCircle className="h-5 w-5 text-red-500 mr-3" />
+                <p className="text-red-700">{error}</p>
+              </div>
+            </div>
+          )}
+
           {/* Client Information */}
           <Card>
             <CardHeader>
@@ -383,44 +845,6 @@ const EstimateForm = () => {
                     {errors.clientType}
                   </p>
                 )}
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="companyName">Law Firm or Company *</Label>
-                  <Input
-                    id="companyName"
-                    value={formData.companyName}
-                    onChange={(e) =>
-                      handleInputChange('companyName', e.target.value)
-                    }
-                    placeholder="Law Firm or Company"
-                    className={errors.companyName ? 'border-red-500' : ''}
-                  />
-                  {errors.companyName && (
-                    <p className="text-red-500 text-sm mt-1">
-                      {errors.companyName}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <Label htmlFor="contactName">Contact Name *</Label>
-                  <Input
-                    id="contactName"
-                    value={formData.contactName}
-                    onChange={(e) =>
-                      handleInputChange('contactName', e.target.value)
-                    }
-                    placeholder="Primary Contact Person"
-                    className={errors.contactName ? 'border-red-500' : ''}
-                  />
-                  {errors.contactName && (
-                    <p className="text-red-500 text-sm mt-1">
-                      {errors.contactName}
-                    </p>
-                  )}
-                </div>
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
@@ -1344,9 +1768,6 @@ const EstimateForm = () => {
                                 />
                               </div>
                               <div>
-                                <Label htmlFor="customReportingEstimatedHours">
-                                  Estimated hours needed
-                                </Label>
                                 <Input
                                   id="customReportingEstimatedHours"
                                   value={formData.customReportingEstimatedHours}
@@ -1788,7 +2209,15 @@ const EstimateForm = () => {
           </Card>
 
           {/* Submit Button */}
-          <div className="flex justify-center">
+          <div className="flex justify-center gap-4">
+            <Button
+              variant="outline"
+              onClick={handleCancel}
+              disabled={isSubmitting}
+              className="px-8 py-3"
+            >
+              Cancel
+            </Button>
             <Button
               onClick={handleSubmit}
               size="lg"
