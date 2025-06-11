@@ -1,33 +1,39 @@
-'use client'
+'use client';
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { 
-  Users, 
-  FileText, 
+import {
+  Users,
+  FileText,
   TrendingUp,
   AlertCircle,
-  CheckCircle,
   Clock,
-  Plus,
   Search,
   Bell,
   LogOut,
   DollarSign,
-  AlertTriangle
+  AlertTriangle,
+  Database,
+  Briefcase,
+  Building,
+  Contact,
+  Globe,
+  BarChart3,
+  Award,
+  Mail,
+  CheckSquare,
+  UserCheck,
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
+  Plus,
+  X,
+  Trash2,
 } from 'lucide-react';
-
-interface RecentCase {
-  case_id: number;
-  case_number: string;
-  case_title: string;
-  case_status: string;
-  created_date: string;
-  case_type?: string;
-}
 
 interface DashboardStats {
   totalCases: number;
@@ -46,6 +52,15 @@ interface Alert {
   action?: string;
 }
 
+interface CalendarEvent {
+  id: string;
+  title: string;
+  date: Date;
+  type: 'deadline' | 'task' | 'meeting';
+  time?: string;
+  description?: string;
+}
+
 const Dashboard = () => {
   const { signOut, userProfile } = useAuth();
   const router = useRouter();
@@ -56,72 +71,92 @@ const Dashboard = () => {
     totalPayments: 0,
     totalDocuments: 0,
     pendingPayments: 0,
-    pendingDocuments: 0
+    pendingDocuments: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [recentCases, setRecentCases] = useState<RecentCase[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [calendarView, setCalendarView] = useState<'month' | 'week' | 'day'>(
+    'month'
+  );
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [eventFilter, setEventFilter] = useState<
+    'all' | 'deadline' | 'task' | 'meeting'
+  >('all');
+  const [showAddEventModal, setShowAddEventModal] = useState(false);
+  const [newEvent, setNewEvent] = useState({
+    title: '',
+    date: '',
+    time: '',
+    type: 'meeting' as 'deadline' | 'task' | 'meeting',
+    description: '',
+  });
 
   useEffect(() => {
     fetchDashboardData();
+    fetchCalendarEvents();
   }, []);
 
   const fetchDashboardData = async () => {
     try {
       setError(null);
-      
-      // Fetch case statistics with error handling
+
       const [
-        casesResponse,
         totalCasesResponse,
         activeCasesResponse,
         partiesResponse,
         documentsResponse,
         pendingDocsResponse,
         paymentsResponse,
-        pendingPaymentsResponse
+        pendingPaymentsResponse,
       ] = await Promise.allSettled([
-        supabase
-          .from('cases')
-          .select('case_id, case_number, case_title, case_status, created_date')
-          .order('created_date', { ascending: false })
-          .limit(5),
-        supabase
-          .from('cases')
-          .select('*', { count: 'exact', head: true }),
+        supabase.from('cases').select('*', { count: 'exact', head: true }),
         supabase
           .from('cases')
           .select('*', { count: 'exact', head: true })
           .eq('case_status', 'active'),
-        supabase
-          .from('parties')
-          .select('*', { count: 'exact', head: true }),
-        supabase
-          .from('documents')
-          .select('*', { count: 'exact', head: true }),
+        supabase.from('parties').select('*', { count: 'exact', head: true }),
+        supabase.from('documents').select('*', { count: 'exact', head: true }),
         supabase
           .from('documents')
           .select('*', { count: 'exact', head: true })
           .eq('document_status', 'pending'),
-        supabase
-          .from('payments')
-          .select('*', { count: 'exact', head: true }),
+        supabase.from('payments').select('*', { count: 'exact', head: true }),
         supabase
           .from('payments')
           .select('*', { count: 'exact', head: true })
-          .in('payment_status', ['pending', 'approved'])
+          .in('payment_status', ['pending', 'approved']),
       ]);
 
-      // Process results and handle errors
-      const cases = casesResponse.status === 'fulfilled' ? casesResponse.value.data || [] : [];
-      const totalCases = totalCasesResponse.status === 'fulfilled' ? totalCasesResponse.value.count || 0 : 0;
-      const activeCases = activeCasesResponse.status === 'fulfilled' ? activeCasesResponse.value.count || 0 : 0;
-      const totalParties = partiesResponse.status === 'fulfilled' ? partiesResponse.value.count || 0 : 0;
-      const totalDocuments = documentsResponse.status === 'fulfilled' ? documentsResponse.value.count || 0 : 0;
-      const pendingDocuments = pendingDocsResponse.status === 'fulfilled' ? pendingDocsResponse.value.count || 0 : 0;
-      const totalPayments = paymentsResponse.status === 'fulfilled' ? paymentsResponse.value.count || 0 : 0;
-      const pendingPayments = pendingPaymentsResponse.status === 'fulfilled' ? pendingPaymentsResponse.value.count || 0 : 0;
+      const totalCases =
+        totalCasesResponse.status === 'fulfilled'
+          ? totalCasesResponse.value.count || 0
+          : 0;
+      const activeCases =
+        activeCasesResponse.status === 'fulfilled'
+          ? activeCasesResponse.value.count || 0
+          : 0;
+      const totalParties =
+        partiesResponse.status === 'fulfilled'
+          ? partiesResponse.value.count || 0
+          : 0;
+      const totalDocuments =
+        documentsResponse.status === 'fulfilled'
+          ? documentsResponse.value.count || 0
+          : 0;
+      const pendingDocuments =
+        pendingDocsResponse.status === 'fulfilled'
+          ? pendingDocsResponse.value.count || 0
+          : 0;
+      const totalPayments =
+        paymentsResponse.status === 'fulfilled'
+          ? paymentsResponse.value.count || 0
+          : 0;
+      const pendingPayments =
+        pendingPaymentsResponse.status === 'fulfilled'
+          ? pendingPaymentsResponse.value.count || 0
+          : 0;
 
       setStats({
         totalCases,
@@ -130,19 +165,16 @@ const Dashboard = () => {
         totalPayments,
         totalDocuments,
         pendingPayments,
-        pendingDocuments
+        pendingDocuments,
       });
 
-      setRecentCases(cases);
-
-      // Generate alerts based on data
       const newAlerts: Alert[] = [];
       if (pendingDocuments > 0) {
         newAlerts.push({
           id: 'pending-docs',
           type: 'warning',
           message: `${pendingDocuments} documents require review`,
-          action: 'Review Documents'
+          action: 'Review Documents',
         });
       }
       if (pendingPayments > 0) {
@@ -150,17 +182,81 @@ const Dashboard = () => {
           id: 'pending-payments',
           type: 'warning',
           message: `${pendingPayments} payments are pending approval`,
-          action: 'Review Payments'
+          action: 'Review Payments',
         });
       }
       setAlerts(newAlerts);
-
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      setError('Failed to load dashboard data. Please try refreshing the page.');
+      setError(
+        'Failed to load dashboard data. Please try refreshing the page.'
+      );
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchCalendarEvents = async () => {
+    // Mock calendar events - in real implementation, fetch from database
+    const mockEvents: CalendarEvent[] = [
+      {
+        id: '1',
+        title: 'Final Approval Hearing - Smith v. ABC Corp',
+        date: new Date(2025, 5, 15),
+        type: 'deadline',
+        time: '10:00 AM',
+        description: 'Court hearing for final settlement approval',
+      },
+      {
+        id: '2',
+        title: 'Claim Deadline - Johnson Case',
+        date: new Date(2025, 5, 20),
+        type: 'deadline',
+        time: '11:59 PM',
+        description: 'Final deadline for claim submissions',
+      },
+      {
+        id: '3',
+        title: 'Review Settlement Documents',
+        date: new Date(2025, 5, 18),
+        type: 'task',
+        time: '2:00 PM',
+        description: 'Review and approve settlement documentation',
+      },
+      {
+        id: '4',
+        title: 'Client Meeting - ABC Settlement',
+        date: new Date(2025, 5, 22),
+        type: 'meeting',
+        time: '9:00 AM',
+        description: 'Meeting with client to discuss distribution timeline',
+      },
+      {
+        id: '5',
+        title: 'Document Review Deadline',
+        date: new Date(2025, 5, 25),
+        type: 'deadline',
+        time: '5:00 PM',
+        description: 'Final deadline for document submissions',
+      },
+      {
+        id: '6',
+        title: 'Team Standup Meeting',
+        date: new Date(2025, 5, 16),
+        type: 'meeting',
+        time: '11:00 AM',
+        description: 'Weekly team coordination meeting',
+      },
+      {
+        id: '7',
+        title: 'Complete Payment Processing',
+        date: new Date(2025, 5, 19),
+        type: 'task',
+        time: '3:00 PM',
+        description: 'Process pending settlement payments',
+      },
+    ];
+    setCalendarEvents(mockEvents);
   };
 
   const handleSignOut = async () => {
@@ -172,11 +268,52 @@ const Dashboard = () => {
     }
   };
 
+  const handleAddEvent = () => {
+    if (!newEvent.title || !newEvent.date) return;
+
+    // Fix timezone issue by creating date in local timezone
+    const dateParts = newEvent.date.split('-');
+    const year = parseInt(dateParts[0]);
+    const month = parseInt(dateParts[1]) - 1; // Month is 0-indexed
+    const day = parseInt(dateParts[2]);
+    const eventDate = new Date(year, month, day);
+
+    const newCalendarEvent: CalendarEvent = {
+      id: Date.now().toString(),
+      title: newEvent.title,
+      date: eventDate,
+      type: newEvent.type,
+      time: newEvent.time || undefined,
+      description: newEvent.description || undefined,
+    };
+
+    setCalendarEvents([...calendarEvents, newCalendarEvent]);
+    setNewEvent({
+      title: '',
+      date: '',
+      time: '',
+      type: 'meeting',
+      description: '',
+    });
+    setShowAddEventModal(false);
+  };
+
+  const handleDeleteEvent = (eventId: string) => {
+    setCalendarEvents(calendarEvents.filter((event) => event.id !== eventId));
+  };
+
   const navigateTo = (path: string) => {
     router.push(path);
   };
 
-  const StatCard = ({ title, value, icon: Icon, color, trend, onClick }: {
+  const StatCard = ({
+    title,
+    value,
+    icon: Icon,
+    color,
+    trend,
+    onClick,
+  }: {
     title: string;
     value: number;
     icon: React.ComponentType<{ className?: string }>;
@@ -184,14 +321,18 @@ const Dashboard = () => {
     trend?: string;
     onClick?: () => void;
   }) => (
-    <div 
-      className={`bg-white rounded-lg shadow-sm border border-gray-200 p-6 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+    <div
+      className={`bg-white rounded-lg shadow-sm border border-gray-200 p-6 ${
+        onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''
+      }`}
       onClick={onClick}
     >
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-gray-600">{title}</p>
-          <p className="text-2xl font-bold text-gray-900">{value.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-gray-900">
+            {value.toLocaleString()}
+          </p>
           {trend && (
             <div className="flex items-center mt-1">
               <TrendingUp className="h-4 w-4 text-green-500" />
@@ -205,6 +346,186 @@ const Dashboard = () => {
       </div>
     </div>
   );
+
+  const getDaysInMonth = (date: Date) => {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  };
+
+  const getFirstDayOfMonth = (date: Date) => {
+    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+  };
+
+  const getFilteredEvents = () => {
+    if (eventFilter === 'all') return calendarEvents;
+    return calendarEvents.filter((event) => event.type === eventFilter);
+  };
+
+  const renderMonthView = () => {
+    const daysInMonth = getDaysInMonth(currentDate);
+    const firstDay = getFirstDayOfMonth(currentDate);
+    const days = [];
+    const filteredEvents = getFilteredEvents();
+
+    // Add empty cells for days before the first day of the month
+    for (let i = 0; i < firstDay; i++) {
+      days.push(
+        <div key={`empty-${i}`} className="h-28 border border-gray-200"></div>
+      );
+    }
+
+    // Add days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dayDate = new Date(
+        currentDate.getFullYear(),
+        currentDate.getMonth(),
+        day
+      );
+      const dayEvents = filteredEvents.filter(
+        (event) => event.date.toDateString() === dayDate.toDateString()
+      );
+
+      days.push(
+        <div
+          key={day}
+          className="h-28 border border-gray-200 p-1 overflow-y-auto"
+        >
+          <div className="font-medium text-sm mb-1">{day}</div>
+          {dayEvents.map((event) => (
+            <div
+              key={event.id}
+              className={`text-xs p-1 mb-1 rounded truncate cursor-pointer group ${
+                event.type === 'deadline'
+                  ? 'bg-red-100 text-red-800 hover:bg-red-200'
+                  : event.type === 'task'
+                  ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                  : 'bg-green-100 text-green-800 hover:bg-green-200'
+              }`}
+              title={`${event.title} - ${event.time || ''}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="flex-1 truncate">{event.title}</span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteEvent(event.id);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 text-red-600 hover:text-red-800 transition-opacity"
+                  title="Delete event"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-7 gap-0">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+          <div
+            key={day}
+            className="p-3 font-semibold text-center bg-gray-50 border border-gray-200"
+          >
+            {day}
+          </div>
+        ))}
+        {days}
+      </div>
+    );
+  };
+
+  const renderWeekView = () => {
+    const filteredEvents = getFilteredEvents();
+    return (
+      <div className="space-y-3">
+        {filteredEvents.map((event) => (
+          <div
+            key={event.id}
+            className="flex items-center space-x-4 p-4 border rounded-lg hover:bg-gray-50"
+          >
+            <div className="text-sm text-gray-500 min-w-[100px]">
+              {event.date.toLocaleDateString()}
+            </div>
+            <div className="text-sm font-medium min-w-[80px]">{event.time}</div>
+            <div className="flex-1 font-medium">{event.title}</div>
+            {event.description && (
+              <div className="text-sm text-gray-600 max-w-xs">
+                {event.description}
+              </div>
+            )}
+            <div
+              className={`px-3 py-1 text-xs rounded-full font-medium ${
+                event.type === 'deadline'
+                  ? 'bg-red-100 text-red-800'
+                  : event.type === 'task'
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-green-100 text-green-800'
+              }`}
+            >
+              {event.type}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderDayView = () => {
+    const filteredEvents = getFilteredEvents();
+    const todayEvents = filteredEvents.filter(
+      (event) => event.date.toDateString() === currentDate.toDateString()
+    );
+
+    return (
+      <div className="space-y-4">
+        <h3 className="text-lg font-semibold">
+          {currentDate.toLocaleDateString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+          })}
+        </h3>
+        {todayEvents.length > 0 ? (
+          todayEvents.map((event) => (
+            <div
+              key={event.id}
+              className="border rounded-lg p-4 hover:bg-gray-50"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <h4 className="font-medium text-lg">{event.title}</h4>
+                  <p className="text-sm text-gray-600 mt-1">{event.time}</p>
+                  {event.description && (
+                    <p className="text-sm text-gray-500 mt-2">
+                      {event.description}
+                    </p>
+                  )}
+                </div>
+                <div
+                  className={`px-3 py-1 text-xs rounded-full font-medium ${
+                    event.type === 'deadline'
+                      ? 'bg-red-100 text-red-800'
+                      : event.type === 'task'
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-green-100 text-green-800'
+                  }`}
+                >
+                  {event.type}
+                </div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="text-gray-500 text-center py-12">
+            No events scheduled for this day
+          </p>
+        )}
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -227,10 +548,11 @@ const Dashboard = () => {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center">
-                <h1 className="text-2xl font-bold text-gray-900">Settlement Management System</h1>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Settlement Management System
+                </h1>
               </div>
               <div className="flex items-center space-x-4">
-                {/* Notification Bell with Badge */}
                 <div className="relative">
                   <button className="p-2 text-gray-400 hover:text-gray-500">
                     <Bell className="h-6 w-6" />
@@ -241,25 +563,27 @@ const Dashboard = () => {
                     )}
                   </button>
                 </div>
-                
-                <button 
+
+                <button
                   className="p-2 text-gray-400 hover:text-gray-500"
                   onClick={() => navigateTo('/search')}
                 >
                   <Search className="h-6 w-6" />
                 </button>
-                
-                {/* User Profile */}
+
                 <div className="flex items-center space-x-3">
                   <div className="text-right">
                     <p className="text-sm font-medium text-gray-900">
                       {userProfile?.first_name} {userProfile?.last_name}
                     </p>
-                    <p className="text-xs text-gray-500 capitalize">{userProfile?.role}</p>
+                    <p className="text-xs text-gray-500 capitalize">
+                      {userProfile?.role}
+                    </p>
                   </div>
                   <div className="h-8 w-8 bg-blue-600 rounded-full flex items-center justify-center">
                     <span className="text-sm font-medium text-white">
-                      {userProfile?.first_name?.charAt(0)}{userProfile?.last_name?.charAt(0)}
+                      {userProfile?.first_name?.charAt(0)}
+                      {userProfile?.last_name?.charAt(0)}
                     </span>
                   </div>
                   <button
@@ -275,7 +599,6 @@ const Dashboard = () => {
           </div>
         </header>
 
-        {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Error Message */}
           {error && (
@@ -283,7 +606,7 @@ const Dashboard = () => {
               <div className="flex items-center">
                 <AlertTriangle className="h-5 w-5 text-red-500 mr-3" />
                 <p className="text-red-700">{error}</p>
-                <button 
+                <button
                   onClick={fetchDashboardData}
                   className="ml-auto text-red-600 hover:text-red-800 font-medium"
                 >
@@ -297,32 +620,49 @@ const Dashboard = () => {
           {alerts.length > 0 && (
             <div className="mb-6 space-y-3">
               {alerts.map((alert) => (
-                <div key={alert.id} className={`border rounded-lg p-4 ${
-                  alert.type === 'warning' ? 'bg-yellow-50 border-yellow-200' :
-                  alert.type === 'error' ? 'bg-red-50 border-red-200' :
-                  'bg-blue-50 border-blue-200'
-                }`}>
+                <div
+                  key={alert.id}
+                  className={`border rounded-lg p-4 ${
+                    alert.type === 'warning'
+                      ? 'bg-yellow-50 border-yellow-200'
+                      : alert.type === 'error'
+                      ? 'bg-red-50 border-red-200'
+                      : 'bg-blue-50 border-blue-200'
+                  }`}
+                >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center">
-                      <AlertCircle className={`h-5 w-5 mr-3 ${
-                        alert.type === 'warning' ? 'text-yellow-500' :
-                        alert.type === 'error' ? 'text-red-500' :
-                        'text-blue-500'
-                      }`} />
-                      <span className={
-                        alert.type === 'warning' ? 'text-yellow-800' :
-                        alert.type === 'error' ? 'text-red-800' :
-                        'text-blue-800'
-                      }>
+                      <AlertCircle
+                        className={`h-5 w-5 mr-3 ${
+                          alert.type === 'warning'
+                            ? 'text-yellow-500'
+                            : alert.type === 'error'
+                            ? 'text-red-500'
+                            : 'text-blue-500'
+                        }`}
+                      />
+                      <span
+                        className={
+                          alert.type === 'warning'
+                            ? 'text-yellow-800'
+                            : alert.type === 'error'
+                            ? 'text-red-800'
+                            : 'text-blue-800'
+                        }
+                      >
                         {alert.message}
                       </span>
                     </div>
                     {alert.action && (
-                      <button className={`px-3 py-1 rounded text-sm font-medium ${
-                        alert.type === 'warning' ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200' :
-                        alert.type === 'error' ? 'bg-red-100 text-red-800 hover:bg-red-200' :
-                        'bg-blue-100 text-blue-800 hover:bg-blue-200'
-                      }`}>
+                      <button
+                        className={`px-3 py-1 rounded text-sm font-medium ${
+                          alert.type === 'warning'
+                            ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                            : alert.type === 'error'
+                            ? 'bg-red-100 text-red-800 hover:bg-red-200'
+                            : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                        }`}
+                      >
                         {alert.action}
                       </button>
                     )}
@@ -337,7 +677,9 @@ const Dashboard = () => {
             <h2 className="text-3xl font-bold text-gray-900">
               Welcome back, {userProfile?.first_name}!
             </h2>
-            <p className="text-gray-600">Here&apos;s what&apos;s happening with your settlements today.</p>
+            <p className="text-gray-600">
+              Here&apos;s what&apos;s happening with your settlements today.
+            </p>
           </div>
 
           {/* Stats Grid */}
@@ -398,132 +740,430 @@ const Dashboard = () => {
             />
           </div>
 
-          {/* Quick Actions */}
+          {/* Quick Actions - Horizontal */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <button 
-                onClick={() => navigateTo('/cases/new')}
-                className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <Plus className="h-5 w-5 text-blue-600 mr-3" />
-                <span className="text-gray-900 font-medium">New Case</span>
-              </button>
-              <button 
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Quick Actions
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <button
                 onClick={() => navigateTo('/estimates/new')}
-                className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
               >
                 <DollarSign className="h-5 w-5 text-green-600 mr-3" />
-                <span className="text-gray-900 font-medium">Create Estimate</span>
+                <span className="text-gray-900 font-medium">
+                  Create Estimate
+                </span>
               </button>
-              <button 
-                onClick={() => navigateTo('/parties/new')}
-                className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <Users className="h-5 w-5 text-purple-600 mr-3" />
-                <span className="text-gray-900 font-medium">Add Party</span>
-              </button>
-              <button 
+              <button
                 onClick={() => navigateTo('/documents/upload')}
-                className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
               >
                 <FileText className="h-5 w-5 text-orange-600 mr-3" />
-                <span className="text-gray-900 font-medium">Upload Document</span>
+                <span className="text-gray-900 font-medium">
+                  Upload Document
+                </span>
               </button>
             </div>
           </div>
 
-          {/* Recent Activity & Case Status */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Recent Cases */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Recent Cases</h3>
-                <button 
-                  onClick={() => navigateTo('/cases')}
-                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+          {/* Settlement Management - Horizontal */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Settlement Management
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              <button
+                onClick={() => navigateTo('/data-management')}
+                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+              >
+                <Database className="h-5 w-5 text-blue-600 mr-3" />
+                <span className="text-gray-900 font-medium text-sm">
+                  Data Management
+                </span>
+              </button>
+              <button
+                onClick={() => navigateTo('/cases')}
+                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+              >
+                <Briefcase className="h-5 w-5 text-indigo-600 mr-3" />
+                <span className="text-gray-900 font-medium text-sm">
+                  Case Management
+                </span>
+              </button>
+              <button
+                onClick={() => navigateTo('/vendor-management')}
+                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+              >
+                <Building className="h-5 w-5 text-purple-600 mr-3" />
+                <span className="text-gray-900 font-medium text-sm">
+                  Vendor Management
+                </span>
+              </button>
+              <button
+                onClick={() => navigateTo('/contact-management')}
+                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+              >
+                <Contact className="h-5 w-5 text-green-600 mr-3" />
+                <span className="text-gray-900 font-medium text-sm">
+                  Contact Management
+                </span>
+              </button>
+              <button
+                onClick={() => navigateTo('/website-management')}
+                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+              >
+                <Globe className="h-5 w-5 text-cyan-600 mr-3" />
+                <span className="text-gray-900 font-medium text-sm">
+                  Website Management
+                </span>
+              </button>
+              <button
+                onClick={() => navigateTo('/report-management')}
+                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+              >
+                <BarChart3 className="h-5 w-5 text-red-600 mr-3" />
+                <span className="text-gray-900 font-medium text-sm">
+                  Report Management
+                </span>
+              </button>
+              <button
+                onClick={() => navigateTo('/award-management')}
+                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+              >
+                <Award className="h-5 w-5 text-yellow-600 mr-3" />
+                <span className="text-gray-900 font-medium text-sm">
+                  Award Management
+                </span>
+              </button>
+              <button
+                onClick={() => navigateTo('/notice-management')}
+                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+              >
+                <Mail className="h-5 w-5 text-pink-600 mr-3" />
+                <span className="text-gray-900 font-medium text-sm">
+                  Notice Management
+                </span>
+              </button>
+              <button
+                onClick={() => navigateTo('/task-management')}
+                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+              >
+                <CheckSquare className="h-5 w-5 text-orange-600 mr-3" />
+                <span className="text-gray-900 font-medium text-sm">
+                  Task Management
+                </span>
+              </button>
+              <button
+                onClick={() => navigateTo('/user-management')}
+                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+              >
+                <UserCheck className="h-5 w-5 text-gray-600 mr-3" />
+                <span className="text-gray-900 font-medium text-sm">
+                  User Management
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Calendar - Full Width */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <CalendarIcon className="h-5 w-5" />
+                {userProfile?.first_name
+                  ? `${userProfile.first_name}'s Calendar`
+                  : 'Calendar'}
+              </h3>
+              <div className="flex items-center space-x-4">
+                {/* Add Event Button */}
+                <button
+                  onClick={() => setShowAddEventModal(true)}
+                  className="flex items-center px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
                 >
-                  View All
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Event
                 </button>
-              </div>
-              {recentCases.length > 0 ? (
-                <div className="space-y-4">
-                  {recentCases.map((case_item: RecentCase) => (
-                    <div 
-                      key={case_item.case_id} 
-                      className="flex items-center justify-between p-3 border border-gray-100 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                      onClick={() => navigateTo(`/cases/${case_item.case_id}`)}
-                    >
-                      <div>
-                        <p className="font-medium text-gray-900">{case_item.case_title}</p>
-                        <p className="text-sm text-gray-500">#{case_item.case_number}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          case_item.case_status === 'active' 
-                            ? 'bg-green-100 text-green-800' 
-                            : case_item.case_status === 'pending_approval'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                          {case_item.case_status.replace('_', ' ')}
-                        </span>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {new Date(case_item.created_date).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-500">No cases found. Create your first case to get started!</p>
-                  <button 
-                    onClick={() => navigateTo('/cases/new')}
-                    className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                {/* Event Filter */}
+                <div className="flex items-center space-x-2">
+                  <Filter className="h-4 w-4 text-gray-500" />
+                  <select
+                    value={eventFilter}
+                    onChange={(e) =>
+                      setEventFilter(
+                        e.target.value as
+                          | 'all'
+                          | 'deadline'
+                          | 'task'
+                          | 'meeting'
+                      )
+                    }
+                    className="text-sm border border-gray-200 rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    Create First Case
+                    <option value="all">All Events</option>
+                    <option value="deadline">Deadlines Only</option>
+                    <option value="task">Tasks Only</option>
+                    <option value="meeting">Meetings Only</option>
+                  </select>
+                </div>
+
+                {/* View Toggle */}
+                <div className="flex rounded-lg border border-gray-200">
+                  <button
+                    onClick={() => setCalendarView('month')}
+                    className={`px-3 py-1 text-sm font-medium rounded-l-lg ${
+                      calendarView === 'month'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Month
+                  </button>
+                  <button
+                    onClick={() => setCalendarView('week')}
+                    className={`px-3 py-1 text-sm font-medium ${
+                      calendarView === 'week'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Week
+                  </button>
+                  <button
+                    onClick={() => setCalendarView('day')}
+                    className={`px-3 py-1 text-sm font-medium rounded-r-lg ${
+                      calendarView === 'day'
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Day
                   </button>
                 </div>
-              )}
+              </div>
             </div>
 
-            {/* System Status */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">System Status</h3>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
-                    <span className="text-gray-900">Database Connection</span>
-                  </div>
-                  <span className="text-green-600 font-medium">Healthy</span>
+            {/* Calendar Navigation */}
+            <div className="flex items-center justify-between mb-4">
+              <button
+                onClick={() => {
+                  const newDate = new Date(currentDate);
+                  if (calendarView === 'month') {
+                    newDate.setMonth(newDate.getMonth() - 1);
+                  } else if (calendarView === 'week') {
+                    newDate.setDate(newDate.getDate() - 7);
+                  } else {
+                    newDate.setDate(newDate.getDate() - 1);
+                  }
+                  setCurrentDate(newDate);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+
+              <h4 className="text-xl font-semibold">
+                {calendarView === 'month' &&
+                  currentDate.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                  })}
+                {calendarView === 'week' &&
+                  `Week of ${currentDate.toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                  })}`}
+                {calendarView === 'day' &&
+                  currentDate.toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                  })}
+              </h4>
+
+              <button
+                onClick={() => {
+                  const newDate = new Date(currentDate);
+                  if (calendarView === 'month') {
+                    newDate.setMonth(newDate.getMonth() + 1);
+                  } else if (calendarView === 'week') {
+                    newDate.setDate(newDate.getDate() + 7);
+                  } else {
+                    newDate.setDate(newDate.getDate() + 1);
+                  }
+                  setCurrentDate(newDate);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Filter Status */}
+            {eventFilter !== 'all' && (
+              <div className="mb-4 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <div className="flex items-center">
+                  <Filter className="h-4 w-4 text-blue-600 mr-2" />
+                  <span className="text-blue-800 text-sm font-medium">
+                    Showing only {eventFilter}s
+                  </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
-                    <span className="text-gray-900">Payment Processing</span>
-                  </div>
-                  <span className="text-green-600 font-medium">Online</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
-                    <span className="text-gray-900">Document Storage</span>
-                  </div>
-                  <span className="text-green-600 font-medium">Available</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <AlertCircle className="h-5 w-5 text-yellow-500 mr-3" />
-                    <span className="text-gray-900">Email Notifications</span>
-                  </div>
-                  <span className="text-yellow-600 font-medium">Setup Required</span>
-                </div>
+                <button
+                  onClick={() => setEventFilter('all')}
+                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                >
+                  Clear Filter
+                </button>
+              </div>
+            )}
+
+            {/* Calendar Content */}
+            <div className="min-h-[600px]">
+              {calendarView === 'month' && renderMonthView()}
+              {calendarView === 'week' && renderWeekView()}
+              {calendarView === 'day' && renderDayView()}
+            </div>
+
+            {/* Calendar Legend */}
+            <div className="mt-6 flex items-center justify-center space-x-8 text-sm border-t pt-4">
+              <div className="flex items-center">
+                <div className="w-4 h-4 bg-red-100 border border-red-200 rounded mr-2"></div>
+                <span className="text-gray-600 font-medium">Deadlines</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-4 h-4 bg-blue-100 border border-blue-200 rounded mr-2"></div>
+                <span className="text-gray-600 font-medium">Tasks</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-4 h-4 bg-green-100 border border-green-200 rounded mr-2"></div>
+                <span className="text-gray-600 font-medium">Meetings</span>
               </div>
             </div>
           </div>
+
+          {/* Add Event Modal */}
+          {showAddEventModal && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    Add New Event
+                  </h3>
+                  <button
+                    onClick={() => setShowAddEventModal(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Event Title *
+                    </label>
+                    <input
+                      type="text"
+                      value={newEvent.title}
+                      onChange={(e) =>
+                        setNewEvent({ ...newEvent, title: e.target.value })
+                      }
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Enter event title"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Date *
+                      </label>
+                      <input
+                        type="date"
+                        value={newEvent.date}
+                        onChange={(e) =>
+                          setNewEvent({ ...newEvent, date: e.target.value })
+                        }
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Time
+                      </label>
+                      <input
+                        type="time"
+                        value={newEvent.time}
+                        onChange={(e) =>
+                          setNewEvent({ ...newEvent, time: e.target.value })
+                        }
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Event Type
+                    </label>
+                    <select
+                      value={newEvent.type}
+                      onChange={(e) =>
+                        setNewEvent({
+                          ...newEvent,
+                          type: e.target.value as
+                            | 'deadline'
+                            | 'task'
+                            | 'meeting',
+                        })
+                      }
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="meeting">Meeting</option>
+                      <option value="task">Task</option>
+                      <option value="deadline">Deadline</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Description
+                    </label>
+                    <textarea
+                      value={newEvent.description}
+                      onChange={(e) =>
+                        setNewEvent({
+                          ...newEvent,
+                          description: e.target.value,
+                        })
+                      }
+                      rows={3}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Optional description"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    onClick={() => setShowAddEventModal(false)}
+                    className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAddEvent}
+                    disabled={!newEvent.title || !newEvent.date}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Add Event
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Footer */}
           <div className="mt-12 text-center text-gray-500">

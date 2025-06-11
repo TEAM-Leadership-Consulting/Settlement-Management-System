@@ -60,7 +60,7 @@ export default function Home() {
                 ? 'Loading...'
                 : user
                 ? 'Access Dashboard'
-                : 'Sign In to Access'}
+                : 'Dashboard Sign In'}
               <ArrowRight className="ml-2 h-5 w-5" />
             </button>
             <Link
