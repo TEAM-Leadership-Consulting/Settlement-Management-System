@@ -39,39 +39,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Debug logging
-  useEffect(() => {
-    console.log('AuthContext State:', {
-      user: user?.email,
-      session: !!session,
-      userProfile: userProfile?.email,
-      loading,
-    });
-  }, [user, session, userProfile, loading]);
-
-  const fetchUserProfile = async (userId: string) => {
+  const fetchUserProfile = async (userId: string, userEmail?: string) => {
     try {
       console.log('Fetching user profile for ID:', userId);
 
-      const { data, error } = await supabase
+      // First try to find user by auth ID
+      let { data, error } = await supabase
         .from('users')
         .select('*')
         .eq('user_id', userId)
         .single();
 
+      // If not found by user_id, try by email
+      if (error && userEmail) {
+        console.log('Trying to find user by email:', userEmail);
+        const { data: emailData, error: emailError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', userEmail)
+          .single();
+
+        if (!emailError) {
+          data = emailData;
+          error = null;
+        }
+      }
+
       if (error) {
         console.error('Error fetching user profile:', error);
-        // If it's an RLS error, let's check if we can query without RLS
-        console.log('Attempting to check users table accessibility...');
-
-        const { data: testData, error: testError } = await supabase
-          .from('users')
-          .select('count', { count: 'exact', head: true });
-
-        console.log('Users table test result:', {
-          count: testData,
-          error: testError,
-        });
         return null;
       }
 
@@ -85,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProfile = async () => {
     if (user) {
-      const profile = await fetchUserProfile(user.id);
+      const profile = await fetchUserProfile(user.id, user.email);
       setUserProfile(profile);
     }
   };
@@ -105,6 +100,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       console.log('Sign in successful:', data.user?.email);
+
+      // Update last login time in users table
+      if (data.user) {
+        await supabase
+          .from('users')
+          .update({ last_login: new Date().toISOString() })
+          .eq('email', data.user.email);
+      }
+
       return { user: data.user, error: null };
     } catch (err) {
       console.error('Sign in exception:', err);
@@ -120,6 +124,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('Sign out error:', error);
       } else {
         console.log('Sign out successful');
+        setUser(null);
+        setSession(null);
+        setUserProfile(null);
       }
     } catch (err) {
       console.error('Sign out exception:', err);
@@ -142,7 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (error) {
           console.error('Error getting initial session:', error);
         } else {
-          console.log('Initial session:', !!initialSession);
+          console.log('Initial session found:', !!initialSession);
         }
 
         if (mounted) {
@@ -150,17 +157,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(initialSession?.user ?? null);
 
           if (initialSession?.user) {
-            const profile = await fetchUserProfile(initialSession.user.id);
+            console.log('User authenticated, fetching profile...');
+            const profile = await fetchUserProfile(
+              initialSession.user.id,
+              initialSession.user.email
+            );
             if (mounted) {
               setUserProfile(profile);
             }
+          } else {
+            console.log('No authenticated user found');
           }
         }
       } catch (err) {
         console.error('Auth initialization error:', err);
       } finally {
         if (mounted) {
-          console.log('Auth initialization complete, setting loading to false');
+          console.log('Auth initialization complete');
           setLoading(false);
         }
       }
@@ -178,12 +191,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(newSession);
         setUser(newSession?.user ?? null);
 
-        if (newSession?.user) {
-          const profile = await fetchUserProfile(newSession.user.id);
+        if (newSession?.user && event === 'SIGNED_IN') {
+          console.log('User signed in, fetching profile...');
+          const profile = await fetchUserProfile(
+            newSession.user.id,
+            newSession.user.email
+          );
           if (mounted) {
             setUserProfile(profile);
           }
-        } else {
+        } else if (event === 'SIGNED_OUT') {
+          console.log('User signed out, clearing profile...');
           setUserProfile(null);
         }
       }
@@ -193,7 +211,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, []); // Remove session from dependencies since we're not using it directly in the effect
 
   const value = {
     user,

@@ -10,6 +10,10 @@ export default function Home() {
   const router = useRouter();
 
   const handleDashboardClick = () => {
+    if (loading) {
+      return; // Don't do anything while loading
+    }
+
     if (user) {
       router.push('/dashboard');
     } else {
@@ -26,13 +30,21 @@ export default function Home() {
             <h1 className="text-xl font-bold text-gray-900">
               Settlement Management System
             </h1>
-            <button
-              onClick={handleDashboardClick}
-              disabled={loading}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Loading...' : user ? 'Go to Dashboard' : 'Sign In'}
-            </button>
+            <div className="flex items-center space-x-4">
+              <Link
+                href="/test-db"
+                className="text-gray-600 hover:text-gray-800 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                Test Database
+              </Link>
+              <button
+                onClick={handleDashboardClick}
+                disabled={loading}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Loading...' : user ? 'Go to Dashboard' : 'Sign In'}
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -51,24 +63,50 @@ export default function Home() {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button
-              onClick={handleDashboardClick}
-              disabled={loading}
-              className="inline-flex items-center bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
-              {loading
-                ? 'Loading...'
-                : user
-                ? 'Access Dashboard'
-                : 'Dashboard Sign In'}
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </button>
-            <Link
-              href="/test-db"
-              className="inline-flex items-center border border-gray-300 text-gray-700 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors"
-            >
-              Test Database Connection
-            </Link>
+            {!loading && !user ? (
+              // Show login prompt for unauthenticated users
+              <>
+                <button
+                  onClick={() => router.push('/login')}
+                  className="inline-flex items-center bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors"
+                >
+                  Sign In to Access
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </button>
+                <Link
+                  href="/test-db"
+                  className="inline-flex items-center border border-gray-300 text-gray-700 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors"
+                >
+                  Test Database Connection
+                </Link>
+              </>
+            ) : loading ? (
+              // Show loading state
+              <button
+                disabled
+                className="inline-flex items-center bg-gray-300 text-gray-500 px-8 py-4 rounded-lg text-lg font-semibold cursor-not-allowed"
+              >
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-500 mr-2"></div>
+                Loading...
+              </button>
+            ) : (
+              // Show dashboard access for authenticated users
+              <>
+                <button
+                  onClick={() => router.push('/dashboard')}
+                  className="inline-flex items-center bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors"
+                >
+                  Access Dashboard
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </button>
+                <Link
+                  href="/test-db"
+                  className="inline-flex items-center border border-gray-300 text-gray-700 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors"
+                >
+                  Test Database Connection
+                </Link>
+              </>
+            )}
           </div>
         </div>
 
@@ -134,7 +172,7 @@ export default function Home() {
         </div>
 
         {/* User Status Section */}
-        {user && (
+        {user && !loading && (
           <div className="py-8">
             <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
               <h3 className="text-lg font-semibold text-green-800 mb-2">
@@ -150,6 +188,47 @@ export default function Home() {
               >
                 Go to Your Dashboard
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Login Prompt for Unauthenticated Users */}
+        {!user && !loading && (
+          <div className="py-8">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
+              <h3 className="text-lg font-semibold text-blue-800 mb-2">
+                🔐 Authentication Required
+              </h3>
+              <p className="text-blue-700 mb-4">
+                Please sign in to access your settlement management dashboard
+                and start managing your cases.
+              </p>
+              <div className="space-y-3">
+                <button
+                  onClick={() => router.push('/login')}
+                  className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors text-lg font-semibold"
+                >
+                  Sign In to Continue
+                </button>
+                <p className="text-sm text-blue-600">
+                  Demo credentials: admin@settlement.com / ChangeMe123!
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Loading State */}
+        {loading && (
+          <div className="py-8">
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-600 mx-auto mb-4"></div>
+              <h3 className="text-lg font-semibold text-yellow-800 mb-2">
+                Checking Authentication...
+              </h3>
+              <p className="text-yellow-700">
+                Please wait while we verify your login status.
+              </p>
             </div>
           </div>
         )}
@@ -176,11 +255,41 @@ export default function Home() {
                 <p className="text-green-600">Running Smoothly</p>
               </div>
               <div className="text-center">
-                <div className="bg-green-100 p-3 rounded-full inline-block mb-3">
-                  <div className="w-4 h-4 bg-green-500 rounded-full"></div>
+                <div
+                  className={`p-3 rounded-full inline-block mb-3 ${
+                    loading
+                      ? 'bg-yellow-100'
+                      : user
+                      ? 'bg-green-100'
+                      : 'bg-gray-100'
+                  }`}
+                >
+                  <div
+                    className={`w-4 h-4 rounded-full ${
+                      loading
+                        ? 'bg-yellow-500'
+                        : user
+                        ? 'bg-green-500'
+                        : 'bg-gray-500'
+                    }`}
+                  ></div>
                 </div>
-                <h3 className="font-semibold text-gray-900">Security</h3>
-                <p className="text-green-600">Fully Secured</p>
+                <h3 className="font-semibold text-gray-900">Authentication</h3>
+                <p
+                  className={
+                    loading
+                      ? 'text-yellow-600'
+                      : user
+                      ? 'text-green-600'
+                      : 'text-gray-600'
+                  }
+                >
+                  {loading
+                    ? 'Checking...'
+                    : user
+                    ? 'Authenticated'
+                    : 'Sign In Required'}
+                </p>
               </div>
             </div>
           </div>
