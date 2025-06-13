@@ -3,15 +3,29 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { useEffect, useState } from 'react';
 import { ArrowRight, Users, FileText, DollarSign, Shield } from 'lucide-react';
 
 export default function Home() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const [forceShowAuth, setForceShowAuth] = useState(false);
+
+  // Force show auth section after 3 seconds if still loading
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (loading) {
+        console.log('Forcing auth section display due to timeout');
+        setForceShowAuth(true);
+      }
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [loading]);
 
   const handleDashboardClick = () => {
-    if (loading) {
-      return; // Don't do anything while loading
+    if (loading && !forceShowAuth) {
+      return;
     }
 
     if (user) {
@@ -21,8 +35,34 @@ export default function Home() {
     }
   };
 
+  // Debug: Log authentication state
+  console.log('Home page auth state:', {
+    loading,
+    user: user?.email || null,
+    forceShowAuth,
+    timestamp: new Date().toISOString(),
+  });
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      {/* Debug Info */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4">
+        <div className="bg-gray-100 border rounded-lg p-3 text-sm mb-4">
+          <strong>Debug Info:</strong>
+          <span className="ml-2">Loading: {loading ? 'true' : 'false'}</span>
+          <span className="ml-4">User: {user ? user.email : 'null'}</span>
+          <span className="ml-4">
+            Force Show: {forceShowAuth ? 'true' : 'false'}
+          </span>
+          <button
+            onClick={() => setForceShowAuth(true)}
+            className="ml-4 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs"
+          >
+            Force Show Auth
+          </button>
+        </div>
+      </div>
+
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -39,18 +79,23 @@ export default function Home() {
               </Link>
               <button
                 onClick={handleDashboardClick}
-                disabled={loading}
+                disabled={loading && !forceShowAuth}
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? 'Loading...' : user ? 'Go to Dashboard' : 'Sign In'}
+                {loading && !forceShowAuth
+                  ? 'Loading...'
+                  : user
+                  ? 'Dashboard'
+                  : 'Sign In'}
               </button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Hero Section */}
+      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Hero Section */}
         <div className="py-20 text-center">
           <h1 className="text-4xl md:text-6xl font-bold text-gray-900 mb-6">
             Settlement Management
@@ -63,24 +108,7 @@ export default function Home() {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            {!loading && !user ? (
-              // Show login prompt for unauthenticated users
-              <>
-                <button
-                  onClick={() => router.push('/login')}
-                  className="inline-flex items-center bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors"
-                >
-                  Sign In to Access
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </button>
-                <Link
-                  href="/test-db"
-                  className="inline-flex items-center border border-gray-300 text-gray-700 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors"
-                >
-                  Test Database Connection
-                </Link>
-              </>
-            ) : loading ? (
+            {loading && !forceShowAuth ? (
               // Show loading state
               <button
                 disabled
@@ -89,25 +117,98 @@ export default function Home() {
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-500 mr-2"></div>
                 Loading...
               </button>
-            ) : (
+            ) : user ? (
               // Show dashboard access for authenticated users
-              <>
-                <button
-                  onClick={() => router.push('/dashboard')}
-                  className="inline-flex items-center bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors"
-                >
-                  Access Dashboard
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </button>
-                <Link
-                  href="/test-db"
-                  className="inline-flex items-center border border-gray-300 text-gray-700 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors"
-                >
-                  Test Database Connection
-                </Link>
-              </>
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="inline-flex items-center bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors"
+              >
+                Access Dashboard
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </button>
+            ) : (
+              // Show login for unauthenticated users
+              <button
+                onClick={() => router.push('/login')}
+                className="inline-flex items-center bg-blue-600 text-white px-8 py-4 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors"
+              >
+                Sign In to Access
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </button>
             )}
+
+            <Link
+              href="/test-db"
+              className="inline-flex items-center border border-gray-300 text-gray-700 px-8 py-4 rounded-lg text-lg font-semibold hover:bg-gray-50 transition-colors"
+            >
+              Test Database Connection
+            </Link>
           </div>
+        </div>
+
+        {/* Authentication Status Section */}
+        <div className="py-8">
+          {loading && !forceShowAuth ? (
+            // Loading State
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-600 mx-auto mb-4"></div>
+              <h3 className="text-lg font-semibold text-yellow-800 mb-2">
+                Checking Authentication...
+              </h3>
+              <p className="text-yellow-700 mb-4">
+                Please wait while we verify your login status.
+              </p>
+              <button
+                onClick={() => setForceShowAuth(true)}
+                className="text-sm bg-yellow-100 text-yellow-800 px-3 py-1 rounded hover:bg-yellow-200"
+              >
+                Skip Loading (Force Continue)
+              </button>
+            </div>
+          ) : user ? (
+            // User is authenticated
+            <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
+              <h3 className="text-lg font-semibold text-green-800 mb-2">
+                Welcome back, {user.email}!
+              </h3>
+              <p className="text-green-700 mb-4">
+                You&apos;re logged in and ready to access the settlement
+                management system.
+              </p>
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors"
+              >
+                Go to Your Dashboard
+              </button>
+            </div>
+          ) : (
+            // User is NOT authenticated - SHOW LOGIN PROMPT
+            <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+              <h3 className="text-lg font-semibold text-red-800 mb-2">
+                🔐 Authentication Required
+              </h3>
+              <p className="text-red-700 mb-4">
+                You must sign in to access the settlement management system.
+              </p>
+              <div className="space-y-3">
+                <button
+                  onClick={() => router.push('/login')}
+                  className="bg-red-600 text-white px-8 py-3 rounded-lg hover:bg-red-700 transition-colors text-lg font-semibold"
+                >
+                  Sign In Now
+                </button>
+                <p className="text-sm text-red-600">
+                  Demo credentials: admin@settlement.com / ChangeMe123!
+                </p>
+                <div className="text-xs text-red-500 bg-red-100 p-2 rounded">
+                  Debug: loading={loading ? 'true' : 'false'}, user=
+                  {user ? 'exists' : 'null'}, forced=
+                  {forceShowAuth ? 'true' : 'false'}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Features Grid */}
@@ -167,130 +268,6 @@ export default function Home() {
                 Built-in compliance tools and secure data handling for legal
                 requirements.
               </p>
-            </div>
-          </div>
-        </div>
-
-        {/* User Status Section */}
-        {user && !loading && (
-          <div className="py-8">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
-              <h3 className="text-lg font-semibold text-green-800 mb-2">
-                Welcome back, {user.email}!
-              </h3>
-              <p className="text-green-700 mb-4">
-                You&apos;re logged in and ready to access the settlement
-                management system.
-              </p>
-              <button
-                onClick={() => router.push('/dashboard')}
-                className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors"
-              >
-                Go to Your Dashboard
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Login Prompt for Unauthenticated Users */}
-        {!user && !loading && (
-          <div className="py-8">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center">
-              <h3 className="text-lg font-semibold text-blue-800 mb-2">
-                🔐 Authentication Required
-              </h3>
-              <p className="text-blue-700 mb-4">
-                Please sign in to access your settlement management dashboard
-                and start managing your cases.
-              </p>
-              <div className="space-y-3">
-                <button
-                  onClick={() => router.push('/login')}
-                  className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors text-lg font-semibold"
-                >
-                  Sign In to Continue
-                </button>
-                <p className="text-sm text-blue-600">
-                  Demo credentials: admin@settlement.com / ChangeMe123!
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Loading State */}
-        {loading && (
-          <div className="py-8">
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-600 mx-auto mb-4"></div>
-              <h3 className="text-lg font-semibold text-yellow-800 mb-2">
-                Checking Authentication...
-              </h3>
-              <p className="text-yellow-700">
-                Please wait while we verify your login status.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* System Status */}
-        <div className="py-16">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">
-              System Status
-            </h2>
-            <div className="grid md:grid-cols-3 gap-6">
-              <div className="text-center">
-                <div className="bg-green-100 p-3 rounded-full inline-block mb-3">
-                  <div className="w-4 h-4 bg-green-500 rounded-full"></div>
-                </div>
-                <h3 className="font-semibold text-gray-900">Database</h3>
-                <p className="text-green-600">Connected & Operational</p>
-              </div>
-              <div className="text-center">
-                <div className="bg-green-100 p-3 rounded-full inline-block mb-3">
-                  <div className="w-4 h-4 bg-green-500 rounded-full"></div>
-                </div>
-                <h3 className="font-semibold text-gray-900">Application</h3>
-                <p className="text-green-600">Running Smoothly</p>
-              </div>
-              <div className="text-center">
-                <div
-                  className={`p-3 rounded-full inline-block mb-3 ${
-                    loading
-                      ? 'bg-yellow-100'
-                      : user
-                      ? 'bg-green-100'
-                      : 'bg-gray-100'
-                  }`}
-                >
-                  <div
-                    className={`w-4 h-4 rounded-full ${
-                      loading
-                        ? 'bg-yellow-500'
-                        : user
-                        ? 'bg-green-500'
-                        : 'bg-gray-500'
-                    }`}
-                  ></div>
-                </div>
-                <h3 className="font-semibold text-gray-900">Authentication</h3>
-                <p
-                  className={
-                    loading
-                      ? 'text-yellow-600'
-                      : user
-                      ? 'text-green-600'
-                      : 'text-gray-600'
-                  }
-                >
-                  {loading
-                    ? 'Checking...'
-                    : user
-                    ? 'Authenticated'
-                    : 'Sign In Required'}
-                </p>
-              </div>
             </div>
           </div>
         </div>

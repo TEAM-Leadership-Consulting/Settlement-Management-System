@@ -135,10 +135,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let initializationTimer: NodeJS.Timeout;
 
     const initialize = async () => {
       try {
         console.log('Initializing auth context...');
+
+        // Set a fallback timer to ensure loading doesn't get stuck
+        initializationTimer = setTimeout(() => {
+          if (mounted) {
+            console.log('Auth initialization timeout - forcing completion');
+            setLoading(false);
+          }
+        }, 5000); // 5 second fallback
 
         // Get initial session
         const {
@@ -158,12 +167,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           if (initialSession?.user) {
             console.log('User authenticated, fetching profile...');
-            const profile = await fetchUserProfile(
-              initialSession.user.id,
-              initialSession.user.email
-            );
-            if (mounted) {
-              setUserProfile(profile);
+            try {
+              const profile = await fetchUserProfile(
+                initialSession.user.id,
+                initialSession.user.email
+              );
+              if (mounted) {
+                setUserProfile(profile);
+              }
+            } catch (profileError) {
+              console.error('Error fetching profile:', profileError);
+              // Don't fail the whole auth process if profile fetch fails
             }
           } else {
             console.log('No authenticated user found');
@@ -174,6 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } finally {
         if (mounted) {
           console.log('Auth initialization complete');
+          clearTimeout(initializationTimer);
           setLoading(false);
         }
       }
@@ -193,12 +208,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (newSession?.user && event === 'SIGNED_IN') {
           console.log('User signed in, fetching profile...');
-          const profile = await fetchUserProfile(
-            newSession.user.id,
-            newSession.user.email
-          );
-          if (mounted) {
-            setUserProfile(profile);
+          try {
+            const profile = await fetchUserProfile(
+              newSession.user.id,
+              newSession.user.email
+            );
+            if (mounted) {
+              setUserProfile(profile);
+            }
+          } catch (profileError) {
+            console.error(
+              'Error fetching profile after sign in:',
+              profileError
+            );
           }
         } else if (event === 'SIGNED_OUT') {
           console.log('User signed out, clearing profile...');
@@ -209,9 +231,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       mounted = false;
+      clearTimeout(initializationTimer);
       subscription.unsubscribe();
     };
-  }, []); // Remove session from dependencies since we're not using it directly in the effect
+  }, []); // Empty dependency array
 
   const value = {
     user,
