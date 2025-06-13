@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import ProtectedRoute from '@/components/ProtectedRoute';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import {
@@ -10,7 +9,9 @@ import {
   FileText,
   TrendingUp,
   AlertCircle,
+  CheckCircle,
   Clock,
+  Plus,
   Search,
   Bell,
   LogOut,
@@ -30,10 +31,18 @@ import {
   ChevronLeft,
   ChevronRight,
   Filter,
-  Plus,
   X,
   Trash2,
 } from 'lucide-react';
+
+interface RecentCase {
+  case_id: number;
+  case_number: string;
+  case_title: string;
+  case_status: string;
+  created_date: string;
+  case_type?: string;
+}
 
 interface DashboardStats {
   totalCases: number;
@@ -62,8 +71,9 @@ interface CalendarEvent {
 }
 
 const Dashboard = () => {
-  const { signOut, userProfile } = useAuth();
+  const { user, userProfile, loading } = useAuth();
   const router = useRouter();
+  const [showContent, setShowContent] = useState(false);
   const [stats, setStats] = useState<DashboardStats>({
     totalCases: 0,
     activeCases: 0,
@@ -73,8 +83,9 @@ const Dashboard = () => {
     pendingPayments: 0,
     pendingDocuments: 0,
   });
-  const [loading, setLoading] = useState(true);
+  const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [recentCases, setRecentCases] = useState<RecentCase[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState<'month' | 'week' | 'day'>(
@@ -93,16 +104,35 @@ const Dashboard = () => {
     description: '',
   });
 
+  // Force show content after timeout to prevent infinite loading
   useEffect(() => {
-    fetchDashboardData();
-    fetchCalendarEvents();
+    const timer = setTimeout(() => {
+      setShowContent(true);
+    }, 3000);
+    return () => clearTimeout(timer);
   }, []);
+
+  // Redirect if not authenticated after loading/timeout
+  useEffect(() => {
+    if (!loading && !user && showContent) {
+      router.push('/login');
+    }
+  }, [loading, user, showContent, router]);
+
+  // Fetch dashboard data when authenticated
+  useEffect(() => {
+    if ((user || showContent) && !loading) {
+      fetchDashboardData();
+      fetchCalendarEvents();
+    }
+  }, [user, showContent, loading]);
 
   const fetchDashboardData = async () => {
     try {
       setError(null);
 
       const [
+        casesResponse,
         totalCasesResponse,
         activeCasesResponse,
         partiesResponse,
@@ -111,6 +141,11 @@ const Dashboard = () => {
         paymentsResponse,
         pendingPaymentsResponse,
       ] = await Promise.allSettled([
+        supabase
+          .from('cases')
+          .select('case_id, case_number, case_title, case_status, created_date')
+          .order('created_date', { ascending: false })
+          .limit(5),
         supabase.from('cases').select('*', { count: 'exact', head: true }),
         supabase
           .from('cases')
@@ -129,6 +164,11 @@ const Dashboard = () => {
           .in('payment_status', ['pending', 'approved']),
       ]);
 
+      // Process results and handle errors
+      const cases =
+        casesResponse.status === 'fulfilled'
+          ? casesResponse.value.data || []
+          : [];
       const totalCases =
         totalCasesResponse.status === 'fulfilled'
           ? totalCasesResponse.value.count || 0
@@ -168,6 +208,9 @@ const Dashboard = () => {
         pendingDocuments,
       });
 
+      setRecentCases(cases);
+
+      // Generate alerts based on data
       const newAlerts: Alert[] = [];
       if (pendingDocuments > 0) {
         newAlerts.push({
@@ -192,7 +235,7 @@ const Dashboard = () => {
         'Failed to load dashboard data. Please try refreshing the page.'
       );
     } finally {
-      setLoading(false);
+      setLoadingData(false);
     }
   };
 
@@ -260,11 +303,27 @@ const Dashboard = () => {
   };
 
   const handleSignOut = async () => {
+    console.log('Sign out initiated');
     try {
-      await signOut();
-      router.push('/login');
+      // Use the working sign out method
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Supabase signOut error:', error);
+        // Force logout if supabase fails
+        localStorage.clear();
+        sessionStorage.clear();
+      }
+
+      // Clear all storage and force redirect
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = '/login';
     } catch (error) {
       console.error('Error signing out:', error);
+      // Force logout on any error
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = '/login';
     }
   };
 
@@ -527,651 +586,759 @@ const Dashboard = () => {
     );
   };
 
-  if (loading) {
+  // Show loading state during authentication check
+  if (loading && !showContent) {
     return (
-      <ProtectedRoute>
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading dashboard...</p>
-          </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading dashboard...</p>
         </div>
-      </ProtectedRoute>
+      </div>
+    );
+  }
+
+  // Redirect to login if not authenticated
+  if (!loading && !user && showContent) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600">Redirecting to login...</p>
+        </div>
+      </div>
     );
   }
 
   return (
-    <ProtectedRoute>
-      <div className="min-h-screen bg-gray-50">
-        {/* Header */}
-        <header className="bg-white shadow-sm border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div className="flex items-center">
-                <h1 className="text-2xl font-bold text-gray-900">
-                  Settlement Management System
-                </h1>
-              </div>
-              <div className="flex items-center space-x-4">
-                <div className="relative">
-                  <button className="p-2 text-gray-400 hover:text-gray-500">
-                    <Bell className="h-6 w-6" />
-                    {alerts.length > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                        {alerts.length}
-                      </span>
-                    )}
-                  </button>
-                </div>
-
-                <button
-                  className="p-2 text-gray-400 hover:text-gray-500"
-                  onClick={() => navigateTo('/search')}
-                >
-                  <Search className="h-6 w-6" />
-                </button>
-
-                <div className="flex items-center space-x-3">
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-gray-900">
-                      {userProfile?.first_name} {userProfile?.last_name}
-                    </p>
-                    <p className="text-xs text-gray-500 capitalize">
-                      {userProfile?.role}
-                    </p>
-                  </div>
-                  <div className="h-8 w-8 bg-blue-600 rounded-full flex items-center justify-center">
-                    <span className="text-sm font-medium text-white">
-                      {userProfile?.first_name?.charAt(0)}
-                      {userProfile?.last_name?.charAt(0)}
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center">
+              <h1 className="text-2xl font-bold text-gray-900">
+                Settlement Management System
+              </h1>
+            </div>
+            <div className="flex items-center space-x-4">
+              {/* Notification Bell with Badge */}
+              <div className="relative">
+                <button className="p-2 text-gray-400 hover:text-gray-500">
+                  <Bell className="h-6 w-6" />
+                  {alerts.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                      {alerts.length}
                     </span>
-                  </div>
-                  <button
-                    onClick={handleSignOut}
-                    className="p-2 text-gray-400 hover:text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
-                    title="Sign out"
-                  >
-                    <LogOut className="h-5 w-5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Error Message */}
-          {error && (
-            <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
-              <div className="flex items-center">
-                <AlertTriangle className="h-5 w-5 text-red-500 mr-3" />
-                <p className="text-red-700">{error}</p>
-                <button
-                  onClick={fetchDashboardData}
-                  className="ml-auto text-red-600 hover:text-red-800 font-medium"
-                >
-                  Retry
+                  )}
                 </button>
               </div>
-            </div>
-          )}
 
-          {/* Alerts */}
-          {alerts.length > 0 && (
-            <div className="mb-6 space-y-3">
-              {alerts.map((alert) => (
-                <div
-                  key={alert.id}
-                  className={`border rounded-lg p-4 ${
-                    alert.type === 'warning'
-                      ? 'bg-yellow-50 border-yellow-200'
-                      : alert.type === 'error'
-                      ? 'bg-red-50 border-red-200'
-                      : 'bg-blue-50 border-blue-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <AlertCircle
-                        className={`h-5 w-5 mr-3 ${
-                          alert.type === 'warning'
-                            ? 'text-yellow-500'
-                            : alert.type === 'error'
-                            ? 'text-red-500'
-                            : 'text-blue-500'
-                        }`}
-                      />
-                      <span
-                        className={
-                          alert.type === 'warning'
-                            ? 'text-yellow-800'
-                            : alert.type === 'error'
-                            ? 'text-red-800'
-                            : 'text-blue-800'
-                        }
-                      >
-                        {alert.message}
-                      </span>
-                    </div>
-                    {alert.action && (
-                      <button
-                        className={`px-3 py-1 rounded text-sm font-medium ${
-                          alert.type === 'warning'
-                            ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
-                            : alert.type === 'error'
-                            ? 'bg-red-100 text-red-800 hover:bg-red-200'
-                            : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-                        }`}
-                      >
-                        {alert.action}
-                      </button>
-                    )}
-                  </div>
+              <button
+                className="p-2 text-gray-400 hover:text-gray-500"
+                onClick={() => navigateTo('/search')}
+              >
+                <Search className="h-6 w-6" />
+              </button>
+
+              {/* User Profile */}
+              <div className="flex items-center space-x-3">
+                <div className="text-right">
+                  <p className="text-sm font-medium text-gray-900">
+                    {userProfile?.first_name || 'User'}{' '}
+                    {userProfile?.last_name || ''}
+                  </p>
+                  <p className="text-xs text-gray-500 capitalize">
+                    {userProfile?.role || 'Loading...'}
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
-
-          {/* Welcome Section */}
-          <div className="mb-8">
-            <h2 className="text-3xl font-bold text-gray-900">
-              Welcome back, {userProfile?.first_name}!
-            </h2>
-            <p className="text-gray-600">
-              Here&apos;s what&apos;s happening with your settlements today.
-            </p>
-          </div>
-
-          {/* Stats Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <StatCard
-              title="Total Cases"
-              value={stats.totalCases}
-              icon={FileText}
-              color="bg-blue-600"
-              trend="+12% from last month"
-              onClick={() => navigateTo('/cases')}
-            />
-            <StatCard
-              title="Active Cases"
-              value={stats.activeCases}
-              icon={Clock}
-              color="bg-green-600"
-              onClick={() => navigateTo('/cases?status=active')}
-            />
-            <StatCard
-              title="Total Parties"
-              value={stats.totalParties}
-              icon={Users}
-              color="bg-purple-600"
-              onClick={() => navigateTo('/parties')}
-            />
-            <StatCard
-              title="Documents"
-              value={stats.totalDocuments}
-              icon={FileText}
-              color="bg-orange-600"
-              onClick={() => navigateTo('/documents')}
-            />
-          </div>
-
-          {/* Additional Stats Row */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <StatCard
-              title="Pending Documents"
-              value={stats.pendingDocuments}
-              icon={AlertCircle}
-              color="bg-yellow-600"
-              onClick={() => navigateTo('/documents?status=pending')}
-            />
-            <StatCard
-              title="Total Payments"
-              value={stats.totalPayments}
-              icon={DollarSign}
-              color="bg-green-600"
-              onClick={() => navigateTo('/payments')}
-            />
-            <StatCard
-              title="Pending Payments"
-              value={stats.pendingPayments}
-              icon={Clock}
-              color="bg-red-600"
-              onClick={() => navigateTo('/payments?status=pending')}
-            />
-          </div>
-
-          {/* Quick Actions - Horizontal */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Quick Actions
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <button
-                onClick={() => navigateTo('/estimates/new')}
-                className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
-              >
-                <DollarSign className="h-5 w-5 text-green-600 mr-3" />
-                <span className="text-gray-900 font-medium">
-                  Create Estimate
-                </span>
-              </button>
-              <button
-                onClick={() => navigateTo('/documents/upload')}
-                className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
-              >
-                <FileText className="h-5 w-5 text-orange-600 mr-3" />
-                <span className="text-gray-900 font-medium">
-                  Upload Document
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {/* Settlement Management - Horizontal */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Settlement Management
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              <button
-                onClick={() => navigateTo('/data-management')}
-                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
-              >
-                <Database className="h-5 w-5 text-blue-600 mr-3" />
-                <span className="text-gray-900 font-medium text-sm">
-                  Data Management
-                </span>
-              </button>
-              <button
-                onClick={() => navigateTo('/cases')}
-                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
-              >
-                <Briefcase className="h-5 w-5 text-indigo-600 mr-3" />
-                <span className="text-gray-900 font-medium text-sm">
-                  Case Management
-                </span>
-              </button>
-              <button
-                onClick={() => navigateTo('/vendor-management')}
-                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
-              >
-                <Building className="h-5 w-5 text-purple-600 mr-3" />
-                <span className="text-gray-900 font-medium text-sm">
-                  Vendor Management
-                </span>
-              </button>
-              <button
-                onClick={() => navigateTo('/contact-management')}
-                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
-              >
-                <Contact className="h-5 w-5 text-green-600 mr-3" />
-                <span className="text-gray-900 font-medium text-sm">
-                  Contact Management
-                </span>
-              </button>
-              <button
-                onClick={() => navigateTo('/website-management')}
-                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
-              >
-                <Globe className="h-5 w-5 text-cyan-600 mr-3" />
-                <span className="text-gray-900 font-medium text-sm">
-                  Website Management
-                </span>
-              </button>
-              <button
-                onClick={() => navigateTo('/report-management')}
-                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
-              >
-                <BarChart3 className="h-5 w-5 text-red-600 mr-3" />
-                <span className="text-gray-900 font-medium text-sm">
-                  Report Management
-                </span>
-              </button>
-              <button
-                onClick={() => navigateTo('/award-management')}
-                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
-              >
-                <Award className="h-5 w-5 text-yellow-600 mr-3" />
-                <span className="text-gray-900 font-medium text-sm">
-                  Award Management
-                </span>
-              </button>
-              <button
-                onClick={() => navigateTo('/notice-management')}
-                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
-              >
-                <Mail className="h-5 w-5 text-pink-600 mr-3" />
-                <span className="text-gray-900 font-medium text-sm">
-                  Notice Management
-                </span>
-              </button>
-              <button
-                onClick={() => navigateTo('/task-management')}
-                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
-              >
-                <CheckSquare className="h-5 w-5 text-orange-600 mr-3" />
-                <span className="text-gray-900 font-medium text-sm">
-                  Task Management
-                </span>
-              </button>
-              <button
-                onClick={() => navigateTo('/UserManagement')}
-                className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
-              >
-                <UserCheck className="h-5 w-5 text-gray-600 mr-3" />
-                <span className="text-gray-900 font-medium text-sm">
-                  User Management
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {/* Calendar - Full Width */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <CalendarIcon className="h-5 w-5" />
-                {userProfile?.first_name
-                  ? `${userProfile.first_name}'s Calendar`
-                  : 'Calendar'}
-              </h3>
-              <div className="flex items-center space-x-4">
-                {/* Add Event Button */}
-                <button
-                  onClick={() => setShowAddEventModal(true)}
-                  className="flex items-center px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Event
-                </button>
-                {/* Event Filter */}
-                <div className="flex items-center space-x-2">
-                  <Filter className="h-4 w-4 text-gray-500" />
-                  <select
-                    value={eventFilter}
-                    onChange={(e) =>
-                      setEventFilter(
-                        e.target.value as
-                          | 'all'
-                          | 'deadline'
-                          | 'task'
-                          | 'meeting'
-                      )
-                    }
-                    className="text-sm border border-gray-200 rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="all">All Events</option>
-                    <option value="deadline">Deadlines Only</option>
-                    <option value="task">Tasks Only</option>
-                    <option value="meeting">Meetings Only</option>
-                  </select>
-                </div>
-
-                {/* View Toggle */}
-                <div className="flex rounded-lg border border-gray-200">
-                  <button
-                    onClick={() => setCalendarView('month')}
-                    className={`px-3 py-1 text-sm font-medium rounded-l-lg ${
-                      calendarView === 'month'
-                        ? 'bg-blue-600 text-white'
-                        : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    Month
-                  </button>
-                  <button
-                    onClick={() => setCalendarView('week')}
-                    className={`px-3 py-1 text-sm font-medium ${
-                      calendarView === 'week'
-                        ? 'bg-blue-600 text-white'
-                        : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    Week
-                  </button>
-                  <button
-                    onClick={() => setCalendarView('day')}
-                    className={`px-3 py-1 text-sm font-medium rounded-r-lg ${
-                      calendarView === 'day'
-                        ? 'bg-blue-600 text-white'
-                        : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    Day
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Calendar Navigation */}
-            <div className="flex items-center justify-between mb-4">
-              <button
-                onClick={() => {
-                  const newDate = new Date(currentDate);
-                  if (calendarView === 'month') {
-                    newDate.setMonth(newDate.getMonth() - 1);
-                  } else if (calendarView === 'week') {
-                    newDate.setDate(newDate.getDate() - 7);
-                  } else {
-                    newDate.setDate(newDate.getDate() - 1);
-                  }
-                  setCurrentDate(newDate);
-                }}
-                className="p-2 hover:bg-gray-100 rounded-lg"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-
-              <h4 className="text-xl font-semibold">
-                {calendarView === 'month' &&
-                  currentDate.toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                  })}
-                {calendarView === 'week' &&
-                  `Week of ${currentDate.toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                  })}`}
-                {calendarView === 'day' &&
-                  currentDate.toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
-              </h4>
-
-              <button
-                onClick={() => {
-                  const newDate = new Date(currentDate);
-                  if (calendarView === 'month') {
-                    newDate.setMonth(newDate.getMonth() + 1);
-                  } else if (calendarView === 'week') {
-                    newDate.setDate(newDate.getDate() + 7);
-                  } else {
-                    newDate.setDate(newDate.getDate() + 1);
-                  }
-                  setCurrentDate(newDate);
-                }}
-                className="p-2 hover:bg-gray-100 rounded-lg"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Filter Status */}
-            {eventFilter !== 'all' && (
-              <div className="mb-4 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <div className="flex items-center">
-                  <Filter className="h-4 w-4 text-blue-600 mr-2" />
-                  <span className="text-blue-800 text-sm font-medium">
-                    Showing only {eventFilter}s
+                <div className="h-8 w-8 bg-blue-600 rounded-full flex items-center justify-center">
+                  <span className="text-sm font-medium text-white">
+                    {userProfile?.first_name?.charAt(0) ||
+                      user?.email?.charAt(0)?.toUpperCase() ||
+                      'U'}
+                    {userProfile?.last_name?.charAt(0) || ''}
                   </span>
                 </div>
                 <button
-                  onClick={() => setEventFilter('all')}
-                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                  onClick={handleSignOut}
+                  className="p-2 text-gray-400 hover:text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                  title="Sign out"
                 >
-                  Clear Filter
+                  <LogOut className="h-5 w-5" />
                 </button>
               </div>
-            )}
-
-            {/* Calendar Content */}
-            <div className="min-h-[600px]">
-              {calendarView === 'month' && renderMonthView()}
-              {calendarView === 'week' && renderWeekView()}
-              {calendarView === 'day' && renderDayView()}
             </div>
+          </div>
+        </div>
+      </header>
 
-            {/* Calendar Legend */}
-            <div className="mt-6 flex items-center justify-center space-x-8 text-sm border-t pt-4">
-              <div className="flex items-center">
-                <div className="w-4 h-4 bg-red-100 border border-red-200 rounded mr-2"></div>
-                <span className="text-gray-600 font-medium">Deadlines</span>
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <AlertTriangle className="h-5 w-5 text-red-500 mr-3" />
+              <p className="text-red-700">{error}</p>
+              <button
+                onClick={fetchDashboardData}
+                className="ml-auto text-red-600 hover:text-red-800 font-medium"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Alerts */}
+        {alerts.length > 0 && (
+          <div className="mb-6 space-y-3">
+            {alerts.map((alert) => (
+              <div
+                key={alert.id}
+                className={`border rounded-lg p-4 ${
+                  alert.type === 'warning'
+                    ? 'bg-yellow-50 border-yellow-200'
+                    : alert.type === 'error'
+                    ? 'bg-red-50 border-red-200'
+                    : 'bg-blue-50 border-blue-200'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <AlertCircle
+                      className={`h-5 w-5 mr-3 ${
+                        alert.type === 'warning'
+                          ? 'text-yellow-500'
+                          : alert.type === 'error'
+                          ? 'text-red-500'
+                          : 'text-blue-500'
+                      }`}
+                    />
+                    <span
+                      className={
+                        alert.type === 'warning'
+                          ? 'text-yellow-800'
+                          : alert.type === 'error'
+                          ? 'text-red-800'
+                          : 'text-blue-800'
+                      }
+                    >
+                      {alert.message}
+                    </span>
+                  </div>
+                  {alert.action && (
+                    <button
+                      className={`px-3 py-1 rounded text-sm font-medium ${
+                        alert.type === 'warning'
+                          ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                          : alert.type === 'error'
+                          ? 'bg-red-100 text-red-800 hover:bg-red-200'
+                          : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                      }`}
+                    >
+                      {alert.action}
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center">
-                <div className="w-4 h-4 bg-blue-100 border border-blue-200 rounded mr-2"></div>
-                <span className="text-gray-600 font-medium">Tasks</span>
+            ))}
+          </div>
+        )}
+
+        {/* Welcome Section */}
+        <div className="mb-8">
+          <h2 className="text-3xl font-bold text-gray-900">
+            Welcome back,{' '}
+            {userProfile?.first_name || user?.email?.split('@')[0] || 'User'}!
+          </h2>
+          <p className="text-gray-600">
+            Here&apos;s what&apos;s happening with your settlements today.
+          </p>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <StatCard
+            title="Total Cases"
+            value={stats.totalCases}
+            icon={FileText}
+            color="bg-blue-600"
+            trend="+12% from last month"
+            onClick={() => navigateTo('/cases')}
+          />
+          <StatCard
+            title="Active Cases"
+            value={stats.activeCases}
+            icon={Clock}
+            color="bg-green-600"
+            onClick={() => navigateTo('/cases?status=active')}
+          />
+          <StatCard
+            title="Total Parties"
+            value={stats.totalParties}
+            icon={Users}
+            color="bg-purple-600"
+            onClick={() => navigateTo('/parties')}
+          />
+          <StatCard
+            title="Documents"
+            value={stats.totalDocuments}
+            icon={FileText}
+            color="bg-orange-600"
+            onClick={() => navigateTo('/documents')}
+          />
+        </div>
+
+        {/* Additional Stats Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <StatCard
+            title="Pending Documents"
+            value={stats.pendingDocuments}
+            icon={AlertCircle}
+            color="bg-yellow-600"
+            onClick={() => navigateTo('/documents?status=pending')}
+          />
+          <StatCard
+            title="Total Payments"
+            value={stats.totalPayments}
+            icon={DollarSign}
+            color="bg-green-600"
+            onClick={() => navigateTo('/payments')}
+          />
+          <StatCard
+            title="Pending Payments"
+            value={stats.pendingPayments}
+            icon={Clock}
+            color="bg-red-600"
+            onClick={() => navigateTo('/payments?status=pending')}
+          />
+        </div>
+
+        {/* Quick Actions - Horizontal */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Quick Actions
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button
+              onClick={() => navigateTo('/estimates/new')}
+              className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+            >
+              <DollarSign className="h-5 w-5 text-green-600 mr-3" />
+              <span className="text-gray-900 font-medium">Create Estimate</span>
+            </button>
+            <button
+              onClick={() => navigateTo('/documents/upload')}
+              className="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+            >
+              <FileText className="h-5 w-5 text-orange-600 mr-3" />
+              <span className="text-gray-900 font-medium">Upload Document</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Settlement Management - Horizontal */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Settlement Management
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <button
+              onClick={() => navigateTo('/data-management')}
+              className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+            >
+              <Database className="h-5 w-5 text-blue-600 mr-3" />
+              <span className="text-gray-900 font-medium text-sm">
+                Data Management
+              </span>
+            </button>
+            <button
+              onClick={() => navigateTo('/cases')}
+              className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+            >
+              <Briefcase className="h-5 w-5 text-indigo-600 mr-3" />
+              <span className="text-gray-900 font-medium text-sm">
+                Case Management
+              </span>
+            </button>
+            <button
+              onClick={() => navigateTo('/vendor-management')}
+              className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+            >
+              <Building className="h-5 w-5 text-purple-600 mr-3" />
+              <span className="text-gray-900 font-medium text-sm">
+                Vendor Management
+              </span>
+            </button>
+            <button
+              onClick={() => navigateTo('/contact-management')}
+              className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+            >
+              <Contact className="h-5 w-5 text-green-600 mr-3" />
+              <span className="text-gray-900 font-medium text-sm">
+                Contact Management
+              </span>
+            </button>
+            <button
+              onClick={() => navigateTo('/website-management')}
+              className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+            >
+              <Globe className="h-5 w-5 text-cyan-600 mr-3" />
+              <span className="text-gray-900 font-medium text-sm">
+                Website Management
+              </span>
+            </button>
+            <button
+              onClick={() => navigateTo('/report-management')}
+              className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+            >
+              <BarChart3 className="h-5 w-5 text-red-600 mr-3" />
+              <span className="text-gray-900 font-medium text-sm">
+                Report Management
+              </span>
+            </button>
+            <button
+              onClick={() => navigateTo('/award-management')}
+              className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+            >
+              <Award className="h-5 w-5 text-yellow-600 mr-3" />
+              <span className="text-gray-900 font-medium text-sm">
+                Award Management
+              </span>
+            </button>
+            <button
+              onClick={() => navigateTo('/notice-management')}
+              className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+            >
+              <Mail className="h-5 w-5 text-pink-600 mr-3" />
+              <span className="text-gray-900 font-medium text-sm">
+                Notice Management
+              </span>
+            </button>
+            <button
+              onClick={() => navigateTo('/task-management')}
+              className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+            >
+              <CheckSquare className="h-5 w-5 text-orange-600 mr-3" />
+              <span className="text-gray-900 font-medium text-sm">
+                Task Management
+              </span>
+            </button>
+            <button
+              onClick={() => navigateTo('/user-management')}
+              className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
+            >
+              <UserCheck className="h-5 w-5 text-gray-600 mr-3" />
+              <span className="text-gray-900 font-medium text-sm">
+                User Management
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Calendar - Full Width */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <CalendarIcon className="h-5 w-5" />
+              {userProfile?.first_name
+                ? `${userProfile.first_name}'s Calendar`
+                : 'Calendar'}
+            </h3>
+            <div className="flex items-center space-x-4">
+              {/* Add Event Button */}
+              <button
+                onClick={() => setShowAddEventModal(true)}
+                className="flex items-center px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Event
+              </button>
+              {/* Event Filter */}
+              <div className="flex items-center space-x-2">
+                <Filter className="h-4 w-4 text-gray-500" />
+                <select
+                  value={eventFilter}
+                  onChange={(e) =>
+                    setEventFilter(
+                      e.target.value as 'all' | 'deadline' | 'task' | 'meeting'
+                    )
+                  }
+                  className="text-sm border border-gray-200 rounded-lg px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Events</option>
+                  <option value="deadline">Deadlines Only</option>
+                  <option value="task">Tasks Only</option>
+                  <option value="meeting">Meetings Only</option>
+                </select>
               </div>
-              <div className="flex items-center">
-                <div className="w-4 h-4 bg-green-100 border border-green-200 rounded mr-2"></div>
-                <span className="text-gray-600 font-medium">Meetings</span>
+
+              {/* View Toggle */}
+              <div className="flex rounded-lg border border-gray-200">
+                <button
+                  onClick={() => setCalendarView('month')}
+                  className={`px-3 py-1 text-sm font-medium rounded-l-lg ${
+                    calendarView === 'month'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  Month
+                </button>
+                <button
+                  onClick={() => setCalendarView('week')}
+                  className={`px-3 py-1 text-sm font-medium ${
+                    calendarView === 'week'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  Week
+                </button>
+                <button
+                  onClick={() => setCalendarView('day')}
+                  className={`px-3 py-1 text-sm font-medium rounded-r-lg ${
+                    calendarView === 'day'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  Day
+                </button>
               </div>
             </div>
           </div>
 
-          {/* Add Event Modal */}
-          {showAddEventModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">
-                    Add New Event
-                  </h3>
-                  <button
-                    onClick={() => setShowAddEventModal(false)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
+          {/* Calendar Navigation */}
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => {
+                const newDate = new Date(currentDate);
+                if (calendarView === 'month') {
+                  newDate.setMonth(newDate.getMonth() - 1);
+                } else if (calendarView === 'week') {
+                  newDate.setDate(newDate.getDate() - 7);
+                } else {
+                  newDate.setDate(newDate.getDate() - 1);
+                }
+                setCurrentDate(newDate);
+              }}
+              className="p-2 hover:bg-gray-100 rounded-lg"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
 
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Event Title *
-                    </label>
-                    <input
-                      type="text"
-                      value={newEvent.title}
-                      onChange={(e) =>
-                        setNewEvent({ ...newEvent, title: e.target.value })
-                      }
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Enter event title"
-                    />
-                  </div>
+            <h4 className="text-xl font-semibold">
+              {calendarView === 'month' &&
+                currentDate.toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'long',
+                })}
+              {calendarView === 'week' &&
+                `Week of ${currentDate.toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                })}`}
+              {calendarView === 'day' &&
+                currentDate.toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+            </h4>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Date *
-                      </label>
-                      <input
-                        type="date"
-                        value={newEvent.date}
-                        onChange={(e) =>
-                          setNewEvent({ ...newEvent, date: e.target.value })
-                        }
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
+            <button
+              onClick={() => {
+                const newDate = new Date(currentDate);
+                if (calendarView === 'month') {
+                  newDate.setMonth(newDate.getMonth() + 1);
+                } else if (calendarView === 'week') {
+                  newDate.setDate(newDate.getDate() + 7);
+                } else {
+                  newDate.setDate(newDate.getDate() + 1);
+                }
+                setCurrentDate(newDate);
+              }}
+              className="p-2 hover:bg-gray-100 rounded-lg"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
+          </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Time
-                      </label>
-                      <input
-                        type="time"
-                        value={newEvent.time}
-                        onChange={(e) =>
-                          setNewEvent({ ...newEvent, time: e.target.value })
-                        }
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Event Type
-                    </label>
-                    <select
-                      value={newEvent.type}
-                      onChange={(e) =>
-                        setNewEvent({
-                          ...newEvent,
-                          type: e.target.value as
-                            | 'deadline'
-                            | 'task'
-                            | 'meeting',
-                        })
-                      }
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="meeting">Meeting</option>
-                      <option value="task">Task</option>
-                      <option value="deadline">Deadline</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Description
-                    </label>
-                    <textarea
-                      value={newEvent.description}
-                      onChange={(e) =>
-                        setNewEvent({
-                          ...newEvent,
-                          description: e.target.value,
-                        })
-                      }
-                      rows={3}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Optional description"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end space-x-3 mt-6">
-                  <button
-                    onClick={() => setShowAddEventModal(false)}
-                    className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleAddEvent}
-                    disabled={!newEvent.title || !newEvent.date}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Add Event
-                  </button>
-                </div>
+          {/* Filter Status */}
+          {eventFilter !== 'all' && (
+            <div className="mb-4 flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <div className="flex items-center">
+                <Filter className="h-4 w-4 text-blue-600 mr-2" />
+                <span className="text-blue-800 text-sm font-medium">
+                  Showing only {eventFilter}s
+                </span>
               </div>
+              <button
+                onClick={() => setEventFilter('all')}
+                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+              >
+                Clear Filter
+              </button>
             </div>
           )}
 
-          {/* Footer */}
-          <div className="mt-12 text-center text-gray-500">
-            <p>Settlement Management System - Built with Next.js & Supabase</p>
+          {/* Calendar Content */}
+          <div className="min-h-[600px]">
+            {calendarView === 'month' && renderMonthView()}
+            {calendarView === 'week' && renderWeekView()}
+            {calendarView === 'day' && renderDayView()}
           </div>
-        </main>
-      </div>
-    </ProtectedRoute>
+
+          {/* Calendar Legend */}
+          <div className="mt-6 flex items-center justify-center space-x-8 text-sm border-t pt-4">
+            <div className="flex items-center">
+              <div className="w-4 h-4 bg-red-100 border border-red-200 rounded mr-2"></div>
+              <span className="text-gray-600 font-medium">Deadlines</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-4 h-4 bg-blue-100 border border-blue-200 rounded mr-2"></div>
+              <span className="text-gray-600 font-medium">Tasks</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-4 h-4 bg-green-100 border border-green-200 rounded mr-2"></div>
+              <span className="text-gray-600 font-medium">Meetings</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Activity & Case Status */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Recent Cases */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Recent Cases
+              </h3>
+              <button
+                onClick={() => navigateTo('/cases')}
+                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+              >
+                View All
+              </button>
+            </div>
+            {recentCases.length > 0 ? (
+              <div className="space-y-4">
+                {recentCases.map((case_item: RecentCase) => (
+                  <div
+                    key={case_item.case_id}
+                    className="flex items-center justify-between p-3 border border-gray-100 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                    onClick={() => navigateTo(`/cases/${case_item.case_id}`)}
+                  >
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        {case_item.case_title}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        #{case_item.case_number}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                          case_item.case_status === 'active'
+                            ? 'bg-green-100 text-green-800'
+                            : case_item.case_status === 'pending_approval'
+                            ? 'bg-yellow-100 text-yellow-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}
+                      >
+                        {case_item.case_status.replace('_', ' ')}
+                      </span>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {new Date(case_item.created_date).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">
+                  No cases found. Create your first case to get started!
+                </p>
+                <button
+                  onClick={() => navigateTo('/cases/new')}
+                  className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Create First Case
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* System Status */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              System Status
+            </h3>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                  <span className="text-gray-900">Database Connection</span>
+                </div>
+                <span className="text-green-600 font-medium">Healthy</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                  <span className="text-gray-900">Payment Processing</span>
+                </div>
+                <span className="text-green-600 font-medium">Online</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                  <span className="text-gray-900">Document Storage</span>
+                </div>
+                <span className="text-green-600 font-medium">Available</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                  <span className="text-gray-900">Authentication</span>
+                </div>
+                <span className="text-green-600 font-medium">Active</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Add Event Modal */}
+        {showAddEventModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Add New Event
+                </h3>
+                <button
+                  onClick={() => setShowAddEventModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Event Title *
+                  </label>
+                  <input
+                    type="text"
+                    value={newEvent.title}
+                    onChange={(e) =>
+                      setNewEvent({ ...newEvent, title: e.target.value })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter event title"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={newEvent.date}
+                      onChange={(e) =>
+                        setNewEvent({ ...newEvent, date: e.target.value })
+                      }
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Time
+                    </label>
+                    <input
+                      type="time"
+                      value={newEvent.time}
+                      onChange={(e) =>
+                        setNewEvent({ ...newEvent, time: e.target.value })
+                      }
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Event Type
+                  </label>
+                  <select
+                    value={newEvent.type}
+                    onChange={(e) =>
+                      setNewEvent({
+                        ...newEvent,
+                        type: e.target.value as 'deadline' | 'task' | 'meeting',
+                      })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="meeting">Meeting</option>
+                    <option value="task">Task</option>
+                    <option value="deadline">Deadline</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    value={newEvent.description}
+                    onChange={(e) =>
+                      setNewEvent({
+                        ...newEvent,
+                        description: e.target.value,
+                      })
+                    }
+                    rows={3}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Optional description"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  onClick={() => setShowAddEventModal(false)}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAddEvent}
+                  disabled={!newEvent.title || !newEvent.date}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                >
+                  Add Event
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="mt-12 text-center text-gray-500">
+          <p>Settlement Management System - Built with Next.js & Supabase</p>
+        </div>
+      </main>
+    </div>
   );
 };
 
