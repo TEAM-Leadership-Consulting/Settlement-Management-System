@@ -83,7 +83,7 @@ const Dashboard = () => {
     pendingPayments: 0,
     pendingDocuments: 0,
   });
-  const [loadingData, setLoadingData] = useState(true);
+
   const [error, setError] = useState<string | null>(null);
   const [recentCases, setRecentCases] = useState<RecentCase[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -235,7 +235,7 @@ const Dashboard = () => {
         'Failed to load dashboard data. Please try refreshing the page.'
       );
     } finally {
-      setLoadingData(false);
+      // Data loading complete
     }
   };
 
