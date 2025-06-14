@@ -894,7 +894,7 @@ const EstimateForm = () => {
         );
         if (validOtherRoles.length > 0) {
           hasStaffing = true;
-          validOtherRoles.forEach((role, index) => {
+          validOtherRoles.forEach((role) => {
             staffingHtml += `
               <div class="staff-role">
                 <strong>${role.description}:</strong>

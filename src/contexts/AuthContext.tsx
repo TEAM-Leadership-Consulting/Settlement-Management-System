@@ -1,7 +1,13 @@
 // contexts/AuthContext.tsx - Debug Version
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+} from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
@@ -45,57 +51,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log(`[AuthContext ${timestamp}] ${message}`, data || '');
   };
 
-  const fetchUserProfile = async (userId: string, userEmail?: string) => {
-    debugLog('fetchUserProfile called', { userId, userEmail });
+  const fetchUserProfile = useCallback(
+    async (userId: string, userEmail?: string) => {
+      debugLog('fetchUserProfile called', { userId, userEmail });
 
-    try {
-      // First try to find user by email (more reliable)
-      let { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', userEmail)
-        .single();
-
-      debugLog('Profile query by email result', {
-        data: !!data,
-        error: error?.message,
-      });
-
-      // If not found by email, try by user_id
-      if (error && userId) {
-        debugLog('Trying profile query by user_id', userId);
-        const { data: userData, error: userError } = await supabase
+      try {
+        // First try to find user by email (more reliable)
+        let { data, error } = await supabase
           .from('users')
           .select('*')
-          .eq('user_id', userId)
+          .eq('email', userEmail)
           .single();
 
-        debugLog('Profile query by user_id result', {
-          data: !!userData,
-          error: userError?.message,
+        debugLog('Profile query by email result', {
+          data: !!data,
+          error: error?.message,
         });
 
-        if (!userError) {
-          data = userData;
-          error = null;
-        }
-      }
+        // If not found by email, try by user_id
+        if (error && userId) {
+          debugLog('Trying profile query by user_id', userId);
+          const { data: userData, error: userError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('user_id', userId)
+            .single();
 
-      if (error) {
-        debugLog('Profile fetch failed', error);
+          debugLog('Profile query by user_id result', {
+            data: !!userData,
+            error: userError?.message,
+          });
+
+          if (!userError) {
+            data = userData;
+            error = null;
+          }
+        }
+
+        if (error) {
+          debugLog('Profile fetch failed', error);
+          return null;
+        }
+
+        debugLog('Profile fetch successful', {
+          role: data.role,
+          active: data.active,
+        });
+        return data;
+      } catch (err) {
+        debugLog('Profile fetch exception', err);
         return null;
       }
-
-      debugLog('Profile fetch successful', {
-        role: data.role,
-        active: data.active,
-      });
-      return data;
-    } catch (err) {
-      debugLog('Profile fetch exception', err);
-      return null;
-    }
-  };
+    },
+    []
+  );
 
   const refreshProfile = async () => {
     if (user) {
@@ -277,7 +286,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(initializationTimer);
       subscription.unsubscribe();
     };
-  }, []);
+  }, [fetchUserProfile]);
 
   // Log state changes
   useEffect(() => {
