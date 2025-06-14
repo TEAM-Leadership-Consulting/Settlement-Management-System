@@ -189,9 +189,20 @@ const EstimateForm = () => {
 
   const validateWebsite = (url: string): boolean => {
     if (!url) return true; // Optional field
+
+    // Remove any leading/trailing whitespace
+    const trimmedUrl = url.trim();
+
+    // If URL doesn't start with http:// or https://, add https://
+    const urlToTest = trimmedUrl.match(/^https?:\/\//)
+      ? trimmedUrl
+      : `https://${trimmedUrl}`;
+
+    // Updated regex that works with the properly formatted URL
     const urlRegex =
       /^https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$/;
-    return urlRegex.test(url);
+
+    return urlRegex.test(urlToTest);
   };
 
   const formatPhone = (value: string): string => {
@@ -528,145 +539,625 @@ const EstimateForm = () => {
 
   const generatePDF = async (estimateNumber: string) => {
     try {
-      const projectScopeHtml =
-        formData.projectScope && formData.projectScope.length > 0
-          ? formData.projectScope
-              .map((scope) => '<div class="list-item">• ' + scope + '</div>')
-              .join('')
-          : '<div class="field-value">No project scope specified</div>';
+      // Helper function to generate project scope details
+      const generateProjectScopeDetails = () => {
+        let scopeHtml = '';
 
-      const htmlContent =
-        '<!DOCTYPE html>' +
-        '<html>' +
-        '<head>' +
-        '<title>Settlement Management System - Estimate ' +
-        estimateNumber +
-        '</title>' +
-        '<style>' +
-        'body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }' +
-        '.header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; }' +
-        '.section { margin-bottom: 25px; }' +
-        '.section-title { font-size: 18px; font-weight: bold; color: #2563eb; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-bottom: 15px; }' +
-        '.field-group { margin-bottom: 15px; }' +
-        '.field-label { font-weight: bold; color: #374151; }' +
-        '.field-value { margin-left: 10px; }' +
-        '.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }' +
-        '.list-item { margin-left: 20px; margin-bottom: 5px; }' +
-        '.footer { margin-top: 40px; text-align: center; font-size: 12px; color: #666; }' +
-        '.cost-summary { background: #f9fafb; padding: 20px; border-radius: 8px; margin: 20px 0; }' +
-        '.total-cost { font-size: 24px; font-weight: bold; color: #059669; text-align: center; margin-top: 15px; }' +
-        '</style>' +
-        '</head>' +
-        '<body>' +
-        '<div class="header">' +
-        '<h1>Settlement Management System</h1>' +
-        '<h2>Project Estimate ' +
-        estimateNumber +
-        '</h2>' +
-        '<p>Generated on ' +
-        new Date().toLocaleDateString() +
-        '</p>' +
-        '</div>' +
-        '<div class="section">' +
-        '<div class="section-title">Client Information</div>' +
-        '<div class="grid">' +
-        '<div class="field-group">' +
-        '<span class="field-label">Client Type:</span>' +
-        '<span class="field-value">' +
-        (formData.clientType || 'Not specified') +
-        '</span>' +
-        '</div>' +
-        '<div class="field-group">' +
-        '<span class="field-label">Company:</span>' +
-        '<span class="field-value">' +
-        (formData.companyName || 'Not specified') +
-        '</span>' +
-        '</div>' +
-        '<div class="field-group">' +
-        '<span class="field-label">Contact Name:</span>' +
-        '<span class="field-value">' +
-        (formData.contactName || 'Not specified') +
-        '</span>' +
-        '</div>' +
-        '<div class="field-group">' +
-        '<span class="field-label">Email:</span>' +
-        '<span class="field-value">' +
-        (formData.email || 'Not specified') +
-        '</span>' +
-        '</div>' +
-        '<div class="field-group">' +
-        '<span class="field-label">Phone:</span>' +
-        '<span class="field-value">' +
-        (formData.phone || 'Not specified') +
-        '</span>' +
-        '</div>' +
-        '<div class="field-group">' +
-        '<span class="field-label">Website:</span>' +
-        '<span class="field-value">' +
-        (formData.website || 'Not specified') +
-        '</span>' +
-        '</div>' +
-        '</div>' +
-        '</div>' +
-        '<div class="section">' +
-        '<div class="section-title">Case Information</div>' +
-        '<div class="field-group">' +
-        '<span class="field-label">Case Title:</span>' +
-        '<span class="field-value">' +
-        (formData.caseTitle || 'Not specified') +
-        '</span>' +
-        '</div>' +
-        '<div class="grid">' +
-        '<div class="field-group">' +
-        '<span class="field-label">Case Type:</span>' +
-        '<span class="field-value">' +
-        (formData.caseType || 'Not specified') +
-        '</span>' +
-        '</div>' +
-        '<div class="field-group">' +
-        '<span class="field-label">Jurisdiction:</span>' +
-        '<span class="field-value">' +
-        (formData.jurisdiction || 'Not specified') +
-        '</span>' +
-        '</div>' +
-        '<div class="field-group">' +
-        '<span class="field-label">Estimated Claimants:</span>' +
-        '<span class="field-value">' +
-        (formData.estimatedClaimants || 'Not specified') +
-        '</span>' +
-        '</div>' +
-        '<div class="field-group">' +
-        '<span class="field-label">Estimated Settlement:</span>' +
-        '<span class="field-value">' +
-        (formData.estimatedSettlement || 'Not specified') +
-        '</span>' +
-        '</div>' +
-        '</div>' +
-        '</div>' +
-        '<div class="section">' +
-        '<div class="section-title">Project Scope</div>' +
-        projectScopeHtml +
-        '</div>' +
-        '<div class="cost-summary">' +
-        '<div class="section-title">Cost Summary</div>' +
-        '<div class="total-cost">' +
-        'Estimated Total Cost: $' +
-        totalCost.toLocaleString('en-US', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }) +
-        '</div>' +
-        '<div style="text-align: center; margin-top: 10px; font-size: 14px; color: #666;">' +
-        '*This is a preliminary estimate. Final costs may vary based on actual requirements.' +
-        '</div>' +
-        '</div>' +
-        '<div class="footer">' +
-        '<p>Settlement Management System - Professional Legal Administration</p>' +
-        '<p>Contact: (555) 123-4567 | estimates@settlement.com</p>' +
-        '<p>This estimate is valid for 30 days from the date of generation.</p>' +
-        '</div>' +
-        '</body>' +
-        '</html>';
+        // Notice Design & Distribution
+        if (formData.projectScope.includes('Notice Design & Distribution')) {
+          scopeHtml += `
+            <div class="scope-item">
+              <h4 class="scope-title">Notice Design & Distribution</h4>
+              <div class="scope-details">
+                ${
+                  formData.noticeFormsCount
+                    ? `<div>• Number of forms: ${formData.noticeFormsCount}</div>`
+                    : ''
+                }
+                ${
+                  formData.costPerForm
+                    ? `<div>• Cost per form: ${formData.costPerForm}</div>`
+                    : ''
+                }
+              </div>
+            </div>`;
+        }
+
+        // Claims Processing
+        if (formData.projectScope.includes('Claims Processing')) {
+          scopeHtml += `
+            <div class="scope-item">
+              <h4 class="scope-title">Claims Processing</h4>
+              <div class="scope-details">
+                ${
+                  formData.claimsToProcess
+                    ? `<div>• Claims to process: ${formData.claimsToProcess}</div>`
+                    : ''
+                }
+                ${
+                  formData.costPerProcessedClaim
+                    ? `<div>• Cost per claim: ${formData.costPerProcessedClaim}</div>`
+                    : ''
+                }
+              </div>
+            </div>`;
+        }
+
+        // Payment Distribution
+        if (formData.projectScope.includes('Payment Distribution')) {
+          scopeHtml += `
+            <div class="scope-item">
+              <h4 class="scope-title">Payment Distribution</h4>
+              <div class="scope-details">
+                ${
+                  formData.paymentsToDistribute
+                    ? `<div>• Number of payments: ${formData.paymentsToDistribute}</div>`
+                    : ''
+                }
+                ${
+                  formData.costPerPayment
+                    ? `<div>• Cost per payment: ${formData.costPerPayment}</div>`
+                    : ''
+                }
+              </div>
+            </div>`;
+        }
+
+        // Call Center Services
+        if (formData.projectScope.includes('Call Center Services')) {
+          scopeHtml += `
+            <div class="scope-item">
+              <h4 class="scope-title">Call Center Services</h4>
+              <div class="scope-details">`;
+
+          if (formData.callCenterTypes.includes('live-agents')) {
+            scopeHtml += `
+              <div class="sub-service">
+                <strong>Live Agents:</strong>
+                ${
+                  formData.liveAgentHourlyRate
+                    ? `<div>• Hourly rate: ${formData.liveAgentHourlyRate}</div>`
+                    : ''
+                }
+                ${
+                  formData.liveAgentEstimatedHours
+                    ? `<div>• Estimated hours: ${formData.liveAgentEstimatedHours}</div>`
+                    : ''
+                }
+                ${
+                  formData.multipleLanguagesCallCenter
+                    ? `
+                  <div>• Multiple languages required</div>
+                  ${
+                    formData.callCenterLanguages.length > 0
+                      ? `<div>• Languages: ${formData.callCenterLanguages.join(
+                          ', '
+                        )}</div>`
+                      : ''
+                  }
+                  ${
+                    formData.costPerAdditionalLanguage
+                      ? `<div>• Cost per additional language: ${formData.costPerAdditionalLanguage}</div>`
+                      : ''
+                  }
+                `
+                    : ''
+                }
+              </div>`;
+          }
+
+          if (formData.callCenterTypes.includes('ivr')) {
+            scopeHtml += `
+              <div class="sub-service">
+                <strong>IVR (Interactive Voice Response):</strong>
+                ${
+                  formData.ivrCost
+                    ? `<div>• IVR cost: ${formData.ivrCost}</div>`
+                    : ''
+                }
+              </div>`;
+          }
+
+          scopeHtml += `</div></div>`;
+        }
+
+        // Website Development
+        if (formData.projectScope.includes('Website Development')) {
+          scopeHtml += `
+            <div class="scope-item">
+              <h4 class="scope-title">Website Development</h4>
+              <div class="scope-details">`;
+
+          if (formData.websiteTypes.includes('static')) {
+            scopeHtml += `
+              <div class="sub-service">
+                <strong>Static Site:</strong>
+                ${
+                  formData.staticSiteCost
+                    ? `<div>• Cost: ${formData.staticSiteCost}</div>`
+                    : ''
+                }
+              </div>`;
+          }
+
+          if (formData.websiteTypes.includes('data-capture')) {
+            scopeHtml += `
+              <div class="sub-service">
+                <strong>Data Capture Site:</strong>
+                ${
+                  formData.dataCaptureSiteCost
+                    ? `<div>• Cost: ${formData.dataCaptureSiteCost}</div>`
+                    : ''
+                }
+              </div>`;
+          }
+
+          scopeHtml += `</div></div>`;
+        }
+
+        // Reporting & Analytics
+        if (formData.projectScope.includes('Reporting & Analytics')) {
+          scopeHtml += `
+            <div class="scope-item">
+              <h4 class="scope-title">Reporting & Analytics</h4>
+              <div class="scope-details">`;
+
+          if (formData.reportingTypes.includes('standard')) {
+            scopeHtml += `
+              <div class="sub-service">
+                <strong>Standard Reports:</strong>
+                ${
+                  formData.standardReportsCost
+                    ? `<div>• Cost: ${formData.standardReportsCost}</div>`
+                    : ''
+                }
+              </div>`;
+          }
+
+          if (formData.reportingTypes.includes('custom')) {
+            scopeHtml += `
+              <div class="sub-service">
+                <strong>Custom Reporting:</strong>
+                ${
+                  formData.customReportingHourlyRate
+                    ? `<div>• Hourly rate: ${formData.customReportingHourlyRate}</div>`
+                    : ''
+                }
+                ${
+                  formData.customReportingEstimatedHours
+                    ? `<div>• Estimated hours: ${formData.customReportingEstimatedHours}</div>`
+                    : ''
+                }
+              </div>`;
+          }
+
+          scopeHtml += `</div></div>`;
+        }
+
+        // Data Import/Migration
+        if (formData.projectScope.includes('Data Import/Migration')) {
+          scopeHtml += `
+            <div class="scope-item">
+              <h4 class="scope-title">Data Import/Migration</h4>
+              <div class="scope-details">
+                ${
+                  formData.filesToImport
+                    ? `<div>• Files to import: ${formData.filesToImport}</div>`
+                    : ''
+                }
+                ${
+                  formData.dataImportCost
+                    ? `<div>• Import cost: ${formData.dataImportCost}</div>`
+                    : ''
+                }`;
+
+          if (formData.needDataCleaning) {
+            scopeHtml += `
+              <div class="sub-service">
+                <strong>Data Cleaning Required:</strong>
+                ${
+                  formData.dataCleaningHourlyRate
+                    ? `<div>• Hourly rate: ${formData.dataCleaningHourlyRate}</div>`
+                    : ''
+                }
+              </div>`;
+          }
+
+          if (formData.needNCOA) {
+            scopeHtml += `
+              <div class="sub-service">
+                <strong>NCOA/ACS Processing:</strong>
+                ${
+                  formData.ncoaCostPerRecord
+                    ? `<div>• Cost per record: ${formData.ncoaCostPerRecord}</div>`
+                    : ''
+                }
+              </div>`;
+          }
+
+          scopeHtml += `</div></div>`;
+        }
+
+        // Email Campaign
+        if (formData.projectScope.includes('Email Campaign')) {
+          scopeHtml += `
+            <div class="scope-item">
+              <h4 class="scope-title">Email Campaign</h4>
+              <div class="scope-details">
+                ${
+                  formData.emailsToSend
+                    ? `<div>• Emails to send: ${formData.emailsToSend}</div>`
+                    : ''
+                }
+                ${
+                  formData.emailCostPer
+                    ? `<div>• Cost per email: ${formData.emailCostPer}</div>`
+                    : ''
+                }
+              </div>
+            </div>`;
+        }
+
+        return (
+          scopeHtml ||
+          '<div class="field-value">No detailed project scope specified</div>'
+        );
+      };
+
+      // Helper function to generate special requirements
+      const generateSpecialRequirements = () => {
+        const validRequirements = formData.specialRequirements.filter((req) =>
+          req.description.trim()
+        );
+        if (validRequirements.length === 0) return '';
+
+        return `
+          <div class="section">
+            <div class="section-title">Special Requirements</div>
+            ${validRequirements
+              .map(
+                (req, index) => `
+              <div class="requirement-item">
+                <div class="field-group">
+                  <span class="field-label">Requirement ${index + 1}:</span>
+                  <div class="field-value">${req.description}</div>
+                  ${
+                    req.hourlyRate
+                      ? `<div class="field-value">Rate: ${req.hourlyRate}</div>`
+                      : ''
+                  }
+                  ${
+                    req.estimatedHours
+                      ? `<div class="field-value">Hours: ${req.estimatedHours}</div>`
+                      : ''
+                  }
+                </div>
+              </div>
+            `
+              )
+              .join('')}
+          </div>`;
+      };
+
+      // Helper function to generate staffing information
+      const generateStaffingInfo = () => {
+        let staffingHtml = '';
+        let hasStaffing = false;
+
+        if (
+          formData.caseManagerHourlyRate ||
+          formData.caseManagerEstimatedHours
+        ) {
+          hasStaffing = true;
+          staffingHtml += `
+            <div class="staff-role">
+              <strong>Case Manager:</strong>
+              ${
+                formData.caseManagerHourlyRate
+                  ? `<div>• Hourly rate: ${formData.caseManagerHourlyRate}</div>`
+                  : ''
+              }
+              ${
+                formData.caseManagerEstimatedHours
+                  ? `<div>• Estimated hours: ${formData.caseManagerEstimatedHours}</div>`
+                  : ''
+              }
+            </div>`;
+        }
+
+        if (
+          formData.projectCoordinatorHourlyRate ||
+          formData.projectCoordinatorEstimatedHours
+        ) {
+          hasStaffing = true;
+          staffingHtml += `
+            <div class="staff-role">
+              <strong>Project Coordinator:</strong>
+              ${
+                formData.projectCoordinatorHourlyRate
+                  ? `<div>• Hourly rate: ${formData.projectCoordinatorHourlyRate}</div>`
+                  : ''
+              }
+              ${
+                formData.projectCoordinatorEstimatedHours
+                  ? `<div>• Estimated hours: ${formData.projectCoordinatorEstimatedHours}</div>`
+                  : ''
+              }
+            </div>`;
+        }
+
+        const validOtherRoles = formData.otherRoles.filter((role) =>
+          role.description.trim()
+        );
+        if (validOtherRoles.length > 0) {
+          hasStaffing = true;
+          validOtherRoles.forEach((role, index) => {
+            staffingHtml += `
+              <div class="staff-role">
+                <strong>${role.description}:</strong>
+                ${
+                  role.hourlyRate
+                    ? `<div>• Hourly rate: ${role.hourlyRate}</div>`
+                    : ''
+                }
+                ${
+                  role.estimatedHours
+                    ? `<div>• Estimated hours: ${role.estimatedHours}</div>`
+                    : ''
+                }
+              </div>`;
+          });
+        }
+
+        if (!hasStaffing) return '';
+
+        return `
+          <div class="section">
+            <div class="section-title">Staffing Plan</div>
+            ${staffingHtml}
+            ${
+              formData.isCappedCase
+                ? '<div class="special-note">Note: This is a capped case</div>'
+                : ''
+            }
+          </div>`;
+      };
+
+      // Helper function to generate additional contacts
+      const generateAdditionalContacts = () => {
+        const validContacts = formData.additionalContacts.filter((contact) =>
+          contact.name.trim()
+        );
+        if (validContacts.length === 0) return '';
+
+        return `
+          <div class="section">
+            <div class="section-title">Additional Contacts</div>
+            ${validContacts
+              .map(
+                (contact, index) => `
+              <div class="contact-item">
+                <div class="field-group">
+                  <span class="field-label">Contact ${index + 1}:</span>
+                  <div class="field-value">${contact.name}${
+                  contact.title ? ` - ${contact.title}` : ''
+                }</div>
+                  ${
+                    contact.email
+                      ? `<div class="field-value">Email: ${contact.email}</div>`
+                      : ''
+                  }
+                  ${
+                    contact.phone
+                      ? `<div class="field-value">Phone: ${contact.phone}</div>`
+                      : ''
+                  }
+                </div>
+              </div>
+            `
+              )
+              .join('')}
+          </div>`;
+      };
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Settlement Management System - Estimate ${estimateNumber}</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
+            .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
+            .section { margin-bottom: 25px; page-break-inside: avoid; }
+            .section-title { font-size: 18px; font-weight: bold; color: #2563eb; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-bottom: 15px; }
+            .field-group { margin-bottom: 15px; }
+            .field-label { font-weight: bold; color: #374151; }
+            .field-value { margin-left: 10px; margin-bottom: 5px; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+            .list-item { margin-left: 20px; margin-bottom: 5px; }
+            .scope-item { margin-bottom: 20px; padding: 15px; background: #f8fafc; border-left: 4px solid #3b82f6; border-radius: 4px; }
+            .scope-title { font-weight: bold; color: #1e40af; margin-bottom: 10px; font-size: 16px; }
+            .scope-details { margin-left: 15px; }
+            .sub-service { margin: 10px 0; padding: 8px; background: white; border-radius: 4px; }
+            .staff-role { margin: 10px 0; padding: 10px; background: #f0f9ff; border-radius: 4px; }
+            .requirement-item { margin: 10px 0; padding: 10px; background: #fefce8; border-radius: 4px; }
+            .contact-item { margin: 10px 0; padding: 10px; background: #f0fdf4; border-radius: 4px; }
+            .cost-summary { background: #f9fafb; padding: 20px; border-radius: 8px; margin: 20px 0; border: 2px solid #10b981; }
+            .total-cost { font-size: 24px; font-weight: bold; color: #059669; text-align: center; margin-top: 15px; }
+            .special-note { color: #dc2626; font-weight: bold; margin-top: 10px; }
+            .footer { margin-top: 40px; text-align: center; font-size: 12px; color: #666; page-break-inside: avoid; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Settlement Management System</h1>
+            <h2>Project Estimate ${estimateNumber}</h2>
+            <p>Generated on ${new Date().toLocaleDateString()}</p>
+          </div>
+
+          <div class="section">
+            <div class="section-title">Client Information</div>
+            <div class="grid">
+              <div class="field-group">
+                <span class="field-label">Client Type:</span>
+                <span class="field-value">${
+                  formData.clientType || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Company:</span>
+                <span class="field-value">${
+                  formData.companyName || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Contact Name:</span>
+                <span class="field-value">${
+                  formData.contactName || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Email:</span>
+                <span class="field-value">${
+                  formData.email || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Phone:</span>
+                <span class="field-value">${
+                  formData.phone || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Website:</span>
+                <span class="field-value">${
+                  formData.website || 'Not specified'
+                }</span>
+              </div>
+            </div>
+            ${
+              formData.preferredContact
+                ? `
+              <div class="field-group">
+                <span class="field-label">Preferred Contact Method:</span>
+                <span class="field-value">${formData.preferredContact}</span>
+              </div>
+            `
+                : ''
+            }
+          </div>
+
+          ${generateAdditionalContacts()}
+
+          <div class="section">
+            <div class="section-title">Case Information</div>
+            <div class="field-group">
+              <span class="field-label">Case Title:</span>
+              <span class="field-value">${
+                formData.caseTitle || 'Not specified'
+              }</span>
+            </div>
+            ${
+              formData.caseFriendlyTitle
+                ? `
+              <div class="field-group">
+                <span class="field-label">Case Friendly Title:</span>
+                <span class="field-value">${formData.caseFriendlyTitle}</span>
+              </div>
+            `
+                : ''
+            }
+            <div class="grid">
+              <div class="field-group">
+                <span class="field-label">Case Type:</span>
+                <span class="field-value">${
+                  formData.caseType || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Jurisdiction:</span>
+                <span class="field-value">${
+                  formData.jurisdiction || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Estimated Claimants:</span>
+                <span class="field-value">${
+                  formData.estimatedClaimants || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Estimated Settlement:</span>
+                <span class="field-value">${
+                  formData.estimatedSettlement || 'Not specified'
+                }</span>
+              </div>
+            </div>
+            ${
+              formData.courtName
+                ? `
+              <div class="field-group">
+                <span class="field-label">Court Name:</span>
+                <span class="field-value">${formData.courtName}</span>
+              </div>
+            `
+                : ''
+            }
+          </div>
+
+          <div class="section">
+            <div class="section-title">Detailed Project Scope</div>
+            ${generateProjectScopeDetails()}
+          </div>
+
+          <div class="section">
+            <div class="section-title">Timeline & Project Information</div>
+            <div class="grid">
+              <div class="field-group">
+                <span class="field-label">Timeline:</span>
+                <span class="field-value">${
+                  formData.timeline || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Budget Range:</span>
+                <span class="field-value">${
+                  formData.budget || 'Not specified'
+                }</span>
+              </div>
+              <div class="field-group">
+                <span class="field-label">Preferred Start Date:</span>
+                <span class="field-value">${
+                  formData.startDate || 'Not specified'
+                }</span>
+              </div>
+            </div>
+          </div>
+
+          ${generateStaffingInfo()}
+
+          ${generateSpecialRequirements()}
+
+          <div class="cost-summary">
+            <div class="section-title">Cost Summary</div>
+            <div class="total-cost">
+              Estimated Total Cost: $${totalCost.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </div>
+            <div style="text-align: center; margin-top: 10px; font-size: 14px; color: #666;">
+              *This is a preliminary estimate. Final costs may vary based on actual requirements.
+            </div>
+          </div>
+
+          <div class="footer">
+            <p>Settlement Management System - Professional Legal Administration</p>
+            <p>Contact: (555) 123-4567 | estimates@settlement.com</p>
+            <p>This estimate is valid for 30 days from the date of generation.</p>
+          </div>
+        </body>
+        </html>`;
 
       const blob = new Blob([htmlContent], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
@@ -686,7 +1177,6 @@ const EstimateForm = () => {
       alert('Error generating PDF. Please try again.');
     }
   };
-
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
 
@@ -805,6 +1295,13 @@ const EstimateForm = () => {
     }
   };
 
+  const handleSubmitClick = () => {
+    const syntheticEvent = {
+      preventDefault: () => {},
+    } as React.FormEvent<HTMLFormElement>;
+
+    handleSubmit(syntheticEvent);
+  };
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
@@ -2639,15 +3136,15 @@ const EstimateForm = () => {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => generatePDF('PREVIEW')}
+                onClick={() => generatePDF('Download')}
                 className="flex items-center gap-2 px-8 py-3"
                 disabled={loading}
               >
                 <Download className="h-4 w-4" />
-                Preview/Download
+                Download
               </Button>
               <Button
-                onClick={handleSubmit}
+                onClick={handleSubmitClick}
                 size="lg"
                 disabled={isSubmitting}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3"
