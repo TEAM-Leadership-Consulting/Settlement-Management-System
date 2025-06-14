@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -255,8 +255,8 @@ const EstimateForm = () => {
     return parseFloat(cleaned) || 0;
   };
 
-  // Calculate total cost
-  const calculateTotalCost = (): number => {
+  // Memoized calculate total cost function using useCallback
+  const calculateTotalCost = useCallback((): number => {
     let total = 0;
 
     // Notice & Distribution costs
@@ -381,14 +381,15 @@ const EstimateForm = () => {
     });
 
     return total;
-  };
+  }, [formData]); // Only depend on formData
 
   // Update total cost whenever form data changes
   useEffect(() => {
     const newTotal = calculateTotalCost();
     setTotalCost(newTotal);
-  }, [formData]);
+  }, [calculateTotalCost]); // Now we can safely include calculateTotalCost
 
+  // Rest of your component code remains the same...
   // Event handlers
   const handleInputChange = (
     field: keyof FormData,
@@ -399,6 +400,8 @@ const EstimateForm = () => {
       setErrors((prev) => ({ ...prev, [field]: '' }));
     }
   };
+
+  // ... rest of your component implementation
 
   const handlePhoneChange = (value: string): void => {
     const formatted = formatPhone(value);
