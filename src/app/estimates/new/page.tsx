@@ -3168,11 +3168,11 @@ const EstimateForm = () => {
                   <div className="flex flex-col md:flex-row justify-center gap-4 text-sm">
                     <div className="flex items-center justify-center gap-2">
                       <Phone className="h-4 w-4" />
-                      <span>(555) 123-4567</span>
+                      <span>(503) 858-8889</span>
                     </div>
                     <div className="flex items-center justify-center gap-2">
                       <Mail className="h-4 w-4" />
-                      <span>estimates@settlement.com</span>
+                      <span>Info@SettlementManagementSystem.com</span>
                     </div>
                   </div>
                 </div>

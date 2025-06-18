@@ -9,11 +9,8 @@ import {
   FileText,
   TrendingUp,
   AlertCircle,
-  CheckCircle,
   Clock,
   Plus,
-  Search,
-  Bell,
   LogOut,
   DollarSign,
   AlertTriangle,
@@ -34,15 +31,6 @@ import {
   X,
   Trash2,
 } from 'lucide-react';
-
-interface RecentCase {
-  case_id: number;
-  case_number: string;
-  case_title: string;
-  case_status: string;
-  created_date: string;
-  case_type?: string;
-}
 
 interface DashboardStats {
   totalCases: number;
@@ -85,7 +73,6 @@ const Dashboard = () => {
   });
 
   const [error, setError] = useState<string | null>(null);
-  const [recentCases, setRecentCases] = useState<RecentCase[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState<'month' | 'week' | 'day'>(
@@ -132,7 +119,6 @@ const Dashboard = () => {
       setError(null);
 
       const [
-        casesResponse,
         totalCasesResponse,
         activeCasesResponse,
         partiesResponse,
@@ -165,10 +151,6 @@ const Dashboard = () => {
       ]);
 
       // Process results and handle errors
-      const cases =
-        casesResponse.status === 'fulfilled'
-          ? casesResponse.value.data || []
-          : [];
       const totalCases =
         totalCasesResponse.status === 'fulfilled'
           ? totalCasesResponse.value.count || 0
@@ -207,8 +189,6 @@ const Dashboard = () => {
         pendingPayments,
         pendingDocuments,
       });
-
-      setRecentCases(cases);
 
       // Generate alerts based on data
       const newAlerts: Alert[] = [];
@@ -621,25 +601,6 @@ const Dashboard = () => {
               </h1>
             </div>
             <div className="flex items-center space-x-4">
-              {/* Notification Bell with Badge */}
-              <div className="relative">
-                <button className="p-2 text-gray-400 hover:text-gray-500">
-                  <Bell className="h-6 w-6" />
-                  {alerts.length > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                      {alerts.length}
-                    </span>
-                  )}
-                </button>
-              </div>
-
-              <button
-                className="p-2 text-gray-400 hover:text-gray-500"
-                onClick={() => navigateTo('/search')}
-              >
-                <Search className="h-6 w-6" />
-              </button>
-
               {/* User Profile */}
               <div className="flex items-center space-x-3">
                 <div className="text-right">
@@ -764,7 +725,6 @@ const Dashboard = () => {
             value={stats.totalCases}
             icon={FileText}
             color="bg-blue-600"
-            trend="+12% from last month"
             onClick={() => navigateTo('/cases')}
           />
           <StatCard
@@ -1109,110 +1069,6 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Recent Activity & Case Status */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Recent Cases */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Recent Cases
-              </h3>
-              <button
-                onClick={() => navigateTo('/cases')}
-                className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-              >
-                View All
-              </button>
-            </div>
-            {recentCases.length > 0 ? (
-              <div className="space-y-4">
-                {recentCases.map((case_item: RecentCase) => (
-                  <div
-                    key={case_item.case_id}
-                    className="flex items-center justify-between p-3 border border-gray-100 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                    onClick={() => navigateTo(`/cases/${case_item.case_id}`)}
-                  >
-                    <div>
-                      <p className="font-medium text-gray-900">
-                        {case_item.case_title}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        #{case_item.case_number}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <span
-                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          case_item.case_status === 'active'
-                            ? 'bg-green-100 text-green-800'
-                            : case_item.case_status === 'pending_approval'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}
-                      >
-                        {case_item.case_status.replace('_', ' ')}
-                      </span>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {new Date(case_item.created_date).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">
-                  No cases found. Create your first case to get started!
-                </p>
-                <button
-                  onClick={() => navigateTo('/cases/new')}
-                  className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Create First Case
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* System Status */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              System Status
-            </h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
-                  <span className="text-gray-900">Database Connection</span>
-                </div>
-                <span className="text-green-600 font-medium">Healthy</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
-                  <span className="text-gray-900">Payment Processing</span>
-                </div>
-                <span className="text-green-600 font-medium">Online</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
-                  <span className="text-gray-900">Document Storage</span>
-                </div>
-                <span className="text-green-600 font-medium">Available</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
-                  <span className="text-gray-900">Authentication</span>
-                </div>
-                <span className="text-green-600 font-medium">Active</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Add Event Modal */}
         {showAddEventModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -1335,7 +1191,10 @@ const Dashboard = () => {
 
         {/* Footer */}
         <div className="mt-12 text-center text-gray-500">
-          <p>Settlement Management System - Built with Next.js & Supabase</p>
+          <p className="text-lg font-medium">Settlement Management System</p>
+          <p className="text-sm">
+            © 2025 T.E.A.M. Consulting. All rights reserved.
+          </p>
         </div>
       </main>
     </div>
