@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import React from 'react';
 import {
   ArrowRight,
@@ -16,7 +17,6 @@ import {
   Phone,
   Play,
   Zap,
-  MessageSquare,
   Briefcase,
   Database,
   Clock,
@@ -220,7 +220,9 @@ export default function Home() {
     if (user) {
       router.push('/dashboard');
     } else {
-      router.push('/login');
+      document
+        .getElementById('contact')
+        ?.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
@@ -752,14 +754,7 @@ export default function Home() {
                 administration. Join us in revolutionizing legal case
                 management.
               </p>
-              <div className="flex space-x-4">
-                <div className="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center hover:bg-gray-700 cursor-pointer transition-colors">
-                  <MessageSquare className="w-5 h-5" />
-                </div>
-                <div className="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center hover:bg-gray-700 cursor-pointer transition-colors">
-                  <Mail className="w-5 h-5" />
-                </div>
-              </div>
+              <div className="flex space-x-4"></div>
             </div>
 
             <div>
@@ -809,21 +804,11 @@ export default function Home() {
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-white transition-colors">
-                    Careers
-                  </a>
-                </li>
-                <li>
                   <a
                     href="#contact"
                     className="hover:text-white transition-colors"
                   >
                     Contact
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-white transition-colors">
-                    Support
                   </a>
                 </li>
               </ul>
@@ -836,24 +821,24 @@ export default function Home() {
               rights reserved.
             </p>
             <div className="flex space-x-6 mt-4 md:mt-0">
-              <a
-                href="#"
+              <Link
+                href="/privacy"
                 className="text-gray-400 hover:text-white text-sm transition-colors"
               >
                 Privacy Policy
-              </a>
-              <a
-                href="#"
+              </Link>
+              <Link
+                href="/terms"
                 className="text-gray-400 hover:text-white text-sm transition-colors"
               >
                 Terms of Service
-              </a>
-              <a
-                href="#"
+              </Link>
+              <Link
+                href="/cookies"
                 className="text-gray-400 hover:text-white text-sm transition-colors"
               >
                 Cookie Policy
-              </a>
+              </Link>
             </div>
           </div>
         </div>
