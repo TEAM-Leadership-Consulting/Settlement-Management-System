@@ -1,11 +1,13 @@
+// Update your login page to show idle timeout message
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, Clock } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -15,6 +17,11 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Check if user was logged out due to idle timeout
+  const logoutReason = searchParams.get('reason');
+  const isIdleLogout = logoutReason === 'idle';
 
   // Redirect if already logged in
   useEffect(() => {
@@ -94,6 +101,24 @@ export default function LoginPage() {
 
         <div className="bg-white rounded-lg shadow-lg p-8">
           <form onSubmit={handleLogin} className="space-y-6">
+            {/* Idle Timeout Message */}
+            {isIdleLogout && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="flex items-center">
+                  <Clock className="h-5 w-5 text-yellow-500 mr-3" />
+                  <div>
+                    <p className="text-yellow-800 text-sm font-medium">
+                      Session Expired
+                    </p>
+                    <p className="text-yellow-700 text-sm">
+                      You were automatically logged out due to 15 minutes of
+                      inactivity.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Error Message */}
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -169,6 +194,23 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          {/* Security Notice */}
+          <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+            <div className="flex items-start">
+              <Clock className="h-5 w-5 text-blue-500 mt-0.5 mr-3 flex-shrink-0" />
+              <div>
+                <p className="text-xs text-blue-800 font-medium mb-1">
+                  Security Notice
+                </p>
+                <p className="text-xs text-blue-700">
+                  For your security, you will be automatically logged out after
+                  15 minutes of inactivity. You&apos;ll receive a 2-minute
+                  warning before automatic logout.
+                </p>
+              </div>
+            </div>
+          </div>
 
           {/* Development Helper */}
           <div className="mt-6 p-4 bg-gray-50 rounded-lg">

@@ -1,4 +1,4 @@
-// contexts/AuthContext.tsx - Debug Version
+// contexts/AuthContext.tsx - Enhanced with Password Management
 'use client';
 
 import React, {
@@ -10,31 +10,34 @@ import React, {
 } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-
-interface UserProfile {
-  user_id: number;
-  username: string;
-  email: string;
-  first_name: string | null;
-  last_name: string | null;
-  role: string;
-  department: string | null;
-  active: boolean;
-  last_login: string | null;
-  created_date: string;
-}
+import {
+  needsPasswordReset,
+  isAccountLocked,
+  getMinutesUntilUnlock,
+  type UserProfile,
+} from 'src/lib/userManagement';
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   userProfile: UserProfile | null;
   loading: boolean;
+  needsPasswordReset: boolean;
+  isAccountLocked: boolean;
   signIn: (
     email: string,
     password: string
-  ) => Promise<{ user: User | null; error: unknown }>;
+  ) => Promise<{
+    user: User | null;
+    error: unknown;
+    needsPasswordReset?: boolean;
+    lockoutMinutes?: number;
+    remainingAttempts?: number;
+  }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  checkPasswordExpiry: () => boolean;
+  updateLastActivity: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -44,6 +47,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [needsPasswordResetState, setNeedsPasswordResetState] = useState(false);
+  const [isAccountLockedState, setIsAccountLockedState] = useState(false);
 
   // Debug function to log state changes
   const debugLog = (message: string, data?: unknown) => {
@@ -96,7 +101,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         debugLog('Profile fetch successful', {
           role: data.role,
           active: data.active,
+          mustResetPassword: data.must_reset_password,
         });
+
+        // Check if account is locked
+        const locked = isAccountLocked(data.locked_until);
+        setIsAccountLockedState(locked);
+
+        // Check if password reset is needed
+        const passwordResetNeeded = needsPasswordReset(
+          data.password_last_changed,
+          data.must_reset_password
+        );
+        setNeedsPasswordResetState(passwordResetNeeded);
+
         return data;
       } catch (err) {
         debugLog('Profile fetch exception', err);
@@ -114,32 +132,140 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const checkPasswordExpiry = useCallback(() => {
+    if (!userProfile) return false;
+    return needsPasswordReset(
+      userProfile.password_last_changed,
+      userProfile.must_reset_password
+    );
+  }, [userProfile]);
+
+  const updateLastActivity = useCallback(async () => {
+    if (userProfile && user) {
+      try {
+        // Update last activity in user_sessions table if exists
+        await supabase
+          .from('user_sessions')
+          .update({ last_activity: new Date().toISOString() })
+          .eq('auth_user_id', user.id)
+          .eq('is_active', true);
+      } catch (error) {
+        debugLog('Failed to update last activity', error);
+      }
+    }
+  }, [userProfile, user]);
+
   const signIn = async (email: string, password: string) => {
     debugLog('signIn called', { email });
 
     try {
+      // Check if user exists and is not locked before attempting login
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select(
+          'user_id, active, locked_until, failed_login_attempts, must_reset_password, password_last_changed'
+        )
+        .eq('email', email.toLowerCase())
+        .single();
+
+      if (userError && userError.code !== 'PGRST116') {
+        // PGRST116 is "not found" - other errors are more serious
+        throw userError;
+      }
+
+      if (userData) {
+        // Check if account is locked
+        if (isAccountLocked(userData.locked_until)) {
+          const minutesRemaining = getMinutesUntilUnlock(userData.locked_until);
+          return {
+            user: null,
+            error: `Account is locked due to failed login attempts. Try again in ${minutesRemaining} minutes.`,
+            lockoutMinutes: minutesRemaining,
+          };
+        }
+
+        // Check if account is active
+        if (!userData.active) {
+          return {
+            user: null,
+            error:
+              'Your account has been deactivated. Please contact an administrator.',
+          };
+        }
+      }
+
+      // Attempt to sign in with Supabase Auth
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.toLowerCase(),
         password,
       });
 
       if (error) {
         debugLog('signIn failed', error);
-        return { user: null, error };
+
+        // If user exists, handle failed login attempt
+        if (userData) {
+          try {
+            const { data: failedLoginResult } = await supabase.rpc(
+              'handle_failed_login',
+              {
+                p_user_id: userData.user_id,
+              }
+            );
+
+            if (failedLoginResult?.locked) {
+              return {
+                user: null,
+                error: `Too many failed login attempts. Account locked for ${failedLoginResult.lockout_minutes} minutes.`,
+                lockoutMinutes: failedLoginResult.lockout_minutes,
+              };
+            } else if (failedLoginResult?.remaining_attempts !== undefined) {
+              return {
+                user: null,
+                error: `Invalid credentials. ${failedLoginResult.remaining_attempts} attempts remaining before account lock.`,
+                remainingAttempts: failedLoginResult.remaining_attempts,
+              };
+            }
+          } catch (failedLoginError) {
+            debugLog('Failed to handle failed login', failedLoginError);
+          }
+        }
+
+        return { user: null, error: error.message };
       }
 
       debugLog('signIn successful', { userId: data.user?.id });
 
-      // Update last login time in users table
-      if (data.user) {
+      // Reset failed login attempts on successful login
+      if (userData) {
         try {
-          await supabase
-            .from('users')
-            .update({ last_login: new Date().toISOString() })
-            .eq('email', data.user.email);
-        } catch (updateError) {
-          debugLog('Failed to update last_login', updateError);
+          await supabase.rpc('reset_failed_login_attempts', {
+            p_user_id: userData.user_id,
+          });
+
+          // Create session record
+          await supabase.rpc('create_user_session', {
+            p_user_id: userData.user_id,
+            p_auth_user_id: data.user.id,
+            p_expires_at: new Date(
+              Date.now() + 24 * 60 * 60 * 1000
+            ).toISOString(),
+          });
+        } catch (sessionError) {
+          debugLog('Failed to create session record', sessionError);
         }
+
+        // Check if password reset is needed
+        const passwordResetNeeded = needsPasswordReset(
+          userData.password_last_changed,
+          userData.must_reset_password
+        );
+
+        return {
+          user: data.user,
+          error: null,
+          needsPasswordReset: passwordResetNeeded,
+        };
       }
 
       return { user: data.user, error: null };
@@ -149,10 +275,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     debugLog('signOut called');
 
     try {
+      // Log the logout activity
+      if (userProfile) {
+        await supabase.rpc('log_user_activity', {
+          p_user_id: userProfile.user_id,
+          p_action_type: 'logout',
+          p_description: 'User logged out',
+        });
+
+        // End session
+        await supabase.rpc('end_user_session', {
+          p_auth_user_id: user?.id,
+        });
+      }
+
       const { error } = await supabase.auth.signOut();
       if (error) {
         debugLog('signOut failed', error);
@@ -161,11 +301,86 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setSession(null);
         setUserProfile(null);
+        setNeedsPasswordResetState(false);
+        setIsAccountLockedState(false);
       }
     } catch (err) {
       debugLog('signOut exception', err);
     }
-  };
+  }, [userProfile, user]);
+
+  // Set up idle timeout monitoring
+  useEffect(() => {
+    let idleTimer: NodeJS.Timeout;
+    let warningTimer: NodeJS.Timeout;
+    let warningShown = false;
+
+    const resetIdleTimer = () => {
+      clearTimeout(idleTimer);
+      clearTimeout(warningTimer);
+      warningShown = false;
+
+      if (userProfile?.idle_timeout_minutes && user) {
+        const idleTimeoutMs = userProfile.idle_timeout_minutes * 60 * 1000;
+        const warningTimeMs = idleTimeoutMs - 2 * 60 * 1000; // 2 minutes before timeout
+
+        // Set warning timer
+        warningTimer = setTimeout(() => {
+          if (!warningShown) {
+            warningShown = true;
+            const remainingTime = Math.ceil(
+              (idleTimeoutMs - warningTimeMs) / 1000 / 60
+            );
+
+            if (
+              confirm(
+                `Your session will expire in ${remainingTime} minutes due to inactivity. Do you want to stay logged in?`
+              )
+            ) {
+              resetIdleTimer(); // Reset if user wants to stay
+              updateLastActivity();
+            }
+          }
+        }, warningTimeMs);
+
+        // Set logout timer
+        idleTimer = setTimeout(() => {
+          alert('You have been logged out due to inactivity.');
+          signOut();
+          window.location.href = '/login?reason=idle';
+        }, idleTimeoutMs);
+      }
+    };
+
+    const events = [
+      'mousedown',
+      'mousemove',
+      'keypress',
+      'scroll',
+      'touchstart',
+      'click',
+    ];
+
+    const resetTimer = () => {
+      resetIdleTimer();
+      updateLastActivity();
+    };
+
+    if (userProfile && user) {
+      events.forEach((event) => {
+        document.addEventListener(event, resetTimer, true);
+      });
+      resetIdleTimer();
+    }
+
+    return () => {
+      clearTimeout(idleTimer);
+      clearTimeout(warningTimer);
+      events.forEach((event) => {
+        document.removeEventListener(event, resetTimer, true);
+      });
+    };
+  }, [userProfile, user, signOut, updateLastActivity]);
 
   useEffect(() => {
     let mounted = true;
@@ -182,18 +397,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setLoading(false);
           }
         }, 10000); // 10 second fallback
-
-        // Test basic Supabase connection first
-        debugLog('Testing Supabase connection');
-        const { data: testData, error: testError } = await supabase
-          .from('case_types')
-          .select('count', { count: 'exact', head: true });
-
-        debugLog('Supabase connection test', {
-          success: !testError,
-          error: testError?.message,
-          count: testData,
-        });
 
         // Get initial session
         debugLog('Getting initial session');
@@ -276,6 +479,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else if (event === 'SIGNED_OUT') {
           debugLog('User signed out via state change');
           setUserProfile(null);
+          setNeedsPasswordResetState(false);
+          setIsAccountLockedState(false);
         }
       }
     });
@@ -297,17 +502,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       hasProfile: !!userProfile,
       userEmail: user?.email,
       profileRole: userProfile?.role,
+      needsPasswordReset: needsPasswordResetState,
+      isAccountLocked: isAccountLockedState,
     });
-  }, [loading, user, session, userProfile]);
+  }, [
+    loading,
+    user,
+    session,
+    userProfile,
+    needsPasswordResetState,
+    isAccountLockedState,
+  ]);
 
   const value = {
     user,
     session,
     userProfile,
     loading,
+    needsPasswordReset: needsPasswordResetState,
+    isAccountLocked: isAccountLockedState,
     signIn,
     signOut,
     refreshProfile,
+    checkPasswordExpiry,
+    updateLastActivity,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
