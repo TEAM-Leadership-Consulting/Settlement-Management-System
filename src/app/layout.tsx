@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
+import CookieConsentBanner from '@/components/cookie-consent-banner';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -40,7 +41,6 @@ export const metadata: Metadata = {
     index: false,
     follow: false,
   },
-  // Viewport removed from metadata - now in separate export below
 };
 
 // Separate viewport export (fixes Next.js 15 warning)
@@ -64,6 +64,7 @@ export default function RootLayout({
           <div className="relative flex min-h-screen flex-col">
             <main className="flex-1">{children}</main>
           </div>
+          <CookieConsentBanner />
         </AuthProvider>
       </body>
     </html>
