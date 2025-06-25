@@ -188,10 +188,10 @@ export default function CookiePolicy() {
             </h1>
             <div className="flex flex-col sm:flex-row gap-4 justify-center text-sm text-gray-600">
               <span>
-                <strong>Effective Date:</strong> [Insert Date]
+                <strong>Effective Date:</strong> [6/21/2025]
               </span>
               <span>
-                <strong>Last Updated:</strong> [Insert Date]
+                <strong>Last Updated:</strong> [6/21/2025]
               </span>
             </div>
           </div>
@@ -556,15 +556,17 @@ export default function CookiePolicy() {
                     <div className="space-y-2 text-gray-700">
                       <div className="flex items-center space-x-2">
                         <Mail className="w-4 h-4" />
-                        <span>privacy@settlementmanagement.com</span>
+                        <span>Info@settlementmanagementsystem.com</span>
                       </div>
                       <div className="flex items-center space-x-2">
                         <Phone className="w-4 h-4" />
-                        <span>[Insert Phone Number]</span>
+                        <span>[503-858-8889]</span>
                       </div>
                       <div className="flex items-center space-x-2">
                         <MapPin className="w-4 h-4" />
-                        <span>[Insert Business Address]</span>
+                        <span>
+                          [2197 SE Minter Bridge Rd Hillsboro, OR 97123]
+                        </span>
                       </div>
                     </div>
                   </div>

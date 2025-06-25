@@ -805,7 +805,7 @@ const Dashboard = () => {
           </h3>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             <button
-              onClick={() => navigateTo('/data-management')}
+              onClick={() => router.push('/data-management')}
               className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-left"
             >
               <Database className="h-5 w-5 text-blue-600 mr-3" />
