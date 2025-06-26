@@ -1,4 +1,32 @@
-// src/constants/databaseSchema.ts
+// Check Information
+export const databaseSchema = [
+  {
+    table: 'payments',
+    field: 'check_number',
+    type: 'text',
+    required: false,
+    description: 'Check number',
+    category: 'Check',
+    maxLength: 50,
+  },
+  {
+    table: 'payments',
+    field: 'check_date',
+    type: 'date',
+    required: false,
+    description: 'Check date',
+    category: 'Check',
+  },
+  {
+    table: 'payments',
+    field: 'check_memo',
+    type: 'text',
+    required: false,
+    description: 'Check memo',
+    category: 'Check',
+    maxLength: 200,
+  },
+];
 
 export interface DatabaseField {
   table: string;
@@ -35,6 +63,24 @@ export const DATABASE_SCHEMA: DatabaseTable[] = [
     description: 'Individual person information',
     category: 'Parties',
     fields: [
+      // Identifiers
+      {
+        table: 'individual_parties',
+        field: 'individual_id',
+        type: 'number',
+        required: true,
+        description: 'Unique individual ID',
+        category: 'Identifiers',
+      },
+      {
+        table: 'individual_parties',
+        field: 'party_id',
+        type: 'number',
+        required: true,
+        description: 'Reference to parties table',
+        category: 'Identifiers',
+      },
+
       // Name Information
       {
         table: 'individual_parties',
@@ -881,34 +927,6 @@ export const DATABASE_SCHEMA: DatabaseTable[] = [
         ],
       },
 
-      // Check Information
-      {
-        table: 'payments',
-        field: 'check_number',
-        type: 'text',
-        required: false,
-        description: 'Check number',
-        category: 'Check',
-        maxLength: 50,
-      },
-      {
-        table: 'payments',
-        field: 'check_date',
-        type: 'date',
-        required: false,
-        description: 'Check date',
-        category: 'Check',
-      },
-      {
-        table: 'payments',
-        field: 'check_memo',
-        type: 'text',
-        required: false,
-        description: 'Check memo',
-        category: 'Check',
-        maxLength: 200,
-      },
-
       // Digital Payment
       {
         table: 'payments',
@@ -1130,6 +1148,14 @@ export const DATABASE_SCHEMA: DatabaseTable[] = [
     description: 'Main party classification and status',
     category: 'Parties',
     fields: [
+      {
+        table: 'parties',
+        field: 'party_id',
+        type: 'number',
+        required: true,
+        description: 'Unique party identifier',
+        category: 'Identifiers',
+      },
       {
         table: 'parties',
         field: 'party_type',

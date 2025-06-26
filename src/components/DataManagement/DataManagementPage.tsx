@@ -18,58 +18,27 @@ import type {
   UploadedFile,
   MappingStats,
   ValidationStats,
+  WorkflowProgressFile,
+  DeployStepProps,
 } from '@/types/dataManagement';
+import type { DatabaseField } from '@/constants/databaseSchema';
 
 interface DataManagementPageProps {
   className?: string;
 }
 
-// Type for WorkflowProgress component that expects specific properties
-interface WorkflowProgressFile {
-  original_filename: string;
-  upload_status: string;
-  total_rows?: number; // Changed from number | null to number | undefined
-  uploaded_at: string;
-}
-
-// Extended type for components that need additional properties
-interface ComponentUploadedFile {
-  upload_id: number;
-  file_id: string;
-  original_filename: string;
-  file_size: number;
-  file_type: string;
-  upload_status: string;
-  total_rows: number; // Required as number for DeployStep
-  uploaded_at: string;
-  processed_at?: string;
-  error_message?: string;
-  mapping_config?: string;
-  uploaded_by?: number;
-  // Additional properties that components might expect
-  id?: string;
-  file_path?: string;
-  updated_at?: string;
-  case_id?: string;
-  user_id?: string;
-}
-
-// Type for ReviewStep currentFile prop (based on the component interface)
 interface ReviewStepFile {
   original_filename: string;
   upload_status: string;
-  total_rows: number; // Required for ReviewStep
+  total_rows: number;
   file_id: string;
   upload_id: number;
   uploaded_at: string;
 }
 
-export const DataManagementPage: React.FC<DataManagementPageProps> = ({
-  className = '',
-}) => {
+export const DataManagementPage: React.FC<DataManagementPageProps> = () => {
   const dataManagement = useDataManagement();
 
-  // Safely extract properties with fallbacks
   const {
     uploadedFiles = [],
     fileData = null,
@@ -96,6 +65,61 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     clearSuccess,
   } = dataManagement || {};
 
+  const handleViewData = useCallback(() => {
+    if (!currentFile) return;
+
+    // Navigate to data view page with file context
+    window.open(`/data-management/view/${currentFile.file_id}`, '_blank');
+
+    // Alternative: Use Next.js router if you have it available
+    // router.push(`/data-management/view/${currentFile.file_id}`);
+  }, [currentFile]);
+
+  const handleDownloadReport = useCallback(() => {
+    if (!currentFile) return;
+
+    // Create and download CSV report
+    const csvContent = [
+      'Import Report',
+      `File: ${currentFile.original_filename}`,
+      `Upload Date: ${new Date(currentFile.uploaded_at).toLocaleString()}`,
+      `Total Rows: ${currentFile.total_rows}`,
+      `Status: ${currentFile.upload_status}`,
+      '',
+      'Field Mappings:',
+      'Source Column,Target Table,Target Field,Confidence',
+      ...fieldMappings.map(
+        (m) =>
+          `"${m.sourceColumn}","${m.targetTable || 'Unmapped'}","${
+            m.targetField || 'Unmapped'
+          }","${(m.confidence || 0) * 100}%"`
+      ),
+      '',
+      'Validation Results:',
+      'Field,Records,Errors,Warnings',
+      ...validationResults.map(
+        (r) =>
+          `"${r.field}","${r.recordCount}","${r.errors.length}","${r.warnings.length}"`
+      ),
+    ].join('\n');
+
+    // Download the file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute(
+      'download',
+      `import-report-${currentFile.file_id}-${
+        new Date().toISOString().split('T')[0]
+      }.csv`
+    );
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [currentFile, fieldMappings, validationResults]);
+
   // Convert currentFile to WorkflowProgress expected format
   const workflowCurrentFile = useMemo((): WorkflowProgressFile | null => {
     if (!currentFile) return null;
@@ -103,8 +127,10 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     return {
       original_filename: currentFile.original_filename,
       upload_status: currentFile.upload_status,
-      total_rows: currentFile.total_rows ?? undefined, // Convert null to undefined
+      total_rows: currentFile.total_rows ?? undefined,
       uploaded_at: currentFile.uploaded_at,
+      file_size: currentFile.file_size,
+      file_type: currentFile.file_type,
     };
   }, [currentFile]);
 
@@ -115,7 +141,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     return {
       original_filename: currentFile.original_filename,
       upload_status: currentFile.upload_status,
-      total_rows: currentFile.total_rows ?? 0, // Convert null to 0 for required number
+      total_rows: currentFile.total_rows ?? 0,
       file_id: currentFile.file_id,
       upload_id: currentFile.upload_id,
       uploaded_at: currentFile.uploaded_at,
@@ -123,7 +149,9 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
   }, [currentFile]);
 
   // Convert currentFile to ComponentUploadedFile for DeployStep
-  const componentUploadedFile = useMemo((): ComponentUploadedFile | null => {
+  const componentUploadedFile = useMemo(():
+    | DeployStepProps['currentFile']
+    | null => {
     if (!currentFile) return null;
 
     return {
@@ -133,26 +161,21 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
       file_size: currentFile.file_size,
       file_type: currentFile.file_type,
       upload_status: currentFile.upload_status,
-      total_rows: currentFile.total_rows ?? 0, // Convert null to 0 for required number
+      total_rows: currentFile.total_rows ?? 0,
       uploaded_at: currentFile.uploaded_at,
       processed_at: currentFile.processed_at,
       error_message: currentFile.error_message,
       mapping_config: currentFile.mapping_config,
-      uploaded_by: currentFile.uploaded_by,
-      id: currentFile.file_id,
-      file_path: undefined,
-      updated_at: undefined,
-      case_id: undefined,
-      user_id: currentFile.uploaded_by?.toString(),
     };
   }, [currentFile]);
 
   // Calculate mapping statistics for WorkflowProgress
-  const mappingStats = useMemo((): MappingStats | undefined => {
-    if (!fieldMappings?.length) return undefined;
+  const mappingStats = useMemo((): MappingStats => {
+    if (!fieldMappings?.length)
+      return { mapped: 0, unmapped: 0, total: 0, percentage: 0 };
 
-    const mapped = fieldMappings.filter((m) =>
-      Boolean(m.targetTable && m.targetField)
+    const mapped = fieldMappings.filter(
+      (m) => m.targetTable && m.targetField
     ).length;
     const total = fieldMappings.length;
 
@@ -232,6 +255,18 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     }
   }, [handleDeployment]);
 
+  const handleAddCustomFieldWrapper = useCallback(
+    (field: DatabaseField): void => {
+      if (!handleAddCustomField) return;
+      try {
+        handleAddCustomField(field);
+      } catch (error: unknown) {
+        console.error('Error adding custom field:', error);
+      }
+    },
+    [handleAddCustomField]
+  );
+
   const handleNext = useCallback(() => {
     const stepOrder: WorkflowStep[] = [
       'upload',
@@ -262,60 +297,65 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
     }
   }, [currentStep, handleStepNavigation]);
 
-  // Render workflow progress
-  const renderWorkflowProgress = () => (
-    <WorkflowProgress
-      currentStep={currentStep}
-      currentFile={workflowCurrentFile}
-      mappingStats={mappingStats}
-      validationStats={validationStats}
-      isProcessing={isProcessing || isUploading || isValidating || isDeploying}
-      onStepClick={handleStepNavigation}
-      allowNavigation={true}
-      showDetailed={true}
-    />
-  );
+  return (
+    <ProtectedRoute>
+      <div className="container mx-auto p-6 max-w-7xl">
+        {/* Page Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold">Data Management</h1>
+          <p className="text-muted-foreground mt-2">
+            Import, process, and deploy your data with advanced field mapping
+            and validation
+          </p>
+        </div>
 
-  // Render error/success alerts
-  const renderAlerts = () => (
-    <>
-      {error && (
-        <Alert variant="destructive" className="mb-4">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            {error}
-            <button
-              onClick={clearError}
-              className="ml-2 text-sm underline hover:no-underline"
-            >
-              Dismiss
-            </button>
-          </AlertDescription>
-        </Alert>
-      )}
+        {/* Workflow Progress Component */}
+        <WorkflowProgress
+          currentStep={currentStep}
+          currentFile={workflowCurrentFile}
+          onStepClick={handleStepNavigation}
+          mappingStats={mappingStats}
+          validationStats={validationStats}
+          isProcessing={
+            isProcessing || isUploading || isValidating || isDeploying
+          }
+          allowNavigation={true}
+          showDetailed={true}
+        />
 
-      {success && (
-        <Alert className="mb-4">
-          <CheckCircle className="h-4 w-4" />
-          <AlertDescription>
-            {success}
-            <button
-              onClick={clearSuccess}
-              className="ml-2 text-sm underline hover:no-underline"
-            >
-              Dismiss
-            </button>
-          </AlertDescription>
-        </Alert>
-      )}
-    </>
-  );
+        {/* Global Alerts */}
+        {error && (
+          <Alert className="mb-6" variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              {error}
+              <button
+                onClick={clearError}
+                className="ml-2 text-sm underline hover:no-underline"
+              >
+                Dismiss
+              </button>
+            </AlertDescription>
+          </Alert>
+        )}
 
-  // Render step content
-  const renderStepContent = () => {
-    switch (currentStep) {
-      case 'upload':
-        return (
+        {success && (
+          <Alert className="mb-6" variant="default">
+            <CheckCircle className="h-4 w-4" />
+            <AlertDescription>
+              {success}
+              <button
+                onClick={clearSuccess}
+                className="ml-2 text-sm underline hover:no-underline"
+              >
+                Dismiss
+              </button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Step Content */}
+        {currentStep === 'upload' && (
           <UploadStep
             uploadedFiles={uploadedFiles}
             onFileUpload={handleFileUploadWrapper}
@@ -323,54 +363,41 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
             isUploading={isUploading}
             uploadProgress={uploadProgress}
           />
-        );
+        )}
 
-      case 'staging':
-        if (!fileData) {
-          return (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                No file data available. Please upload and process a file first.
-              </AlertDescription>
-            </Alert>
-          );
-        }
-        return (
+        {currentStep === 'staging' && fileData && (
           <StagingStep
             fileData={fileData}
             isProcessing={isProcessing}
             onNext={handleNext}
             onBack={handleBack}
           />
-        );
+        )}
 
-      case 'mapping':
-        if (!fileData) {
-          return (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                No file data available. Please complete the staging step first.
-              </AlertDescription>
-            </Alert>
-          );
-        }
-        return (
+        {currentStep === 'mapping' && fileData && (
           <MappingStep
             fileData={fileData}
             fieldMappings={fieldMappings}
-            availableFields={availableFields}
-            onUpdateMapping={handleUpdateMapping}
-            onAddCustomField={handleAddCustomField}
+            availableFields={availableFields as DatabaseField[]}
+            onUpdateMapping={handleUpdateMapping || (() => {})}
+            onAddCustomField={handleAddCustomFieldWrapper}
             onNext={handleNext}
             onBack={handleBack}
             isProcessing={isProcessing}
           />
-        );
+        )}
 
-      case 'validation':
-        return (
+        {currentStep === 'deploy' && componentUploadedFile && (
+          <DeployStep
+            currentFile={componentUploadedFile}
+            onStartNewImport={() => handleStepNavigation?.('upload')}
+            onViewData={handleViewData}
+            onDownloadReport={handleDownloadReport}
+            onBack={handleBack}
+          />
+        )}
+
+        {currentStep === 'validation' && (
           <ValidationStep
             fieldMappings={fieldMappings}
             validationResults={validationResults}
@@ -379,19 +406,9 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
             onBack={handleBack}
             isValidating={isValidating}
           />
-        );
+        )}
 
-      case 'review':
-        if (!reviewStepFile) {
-          return (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>No file selected for review.</AlertDescription>
-            </Alert>
-          );
-        }
-
-        return (
+        {currentStep === 'review' && reviewStepFile && (
           <ReviewStep
             fileData={fileData}
             fieldMappings={fieldMappings}
@@ -401,118 +418,18 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = ({
             onBack={handleBack}
             isDeploying={isDeploying}
           />
-        );
+        )}
 
-      case 'deploy':
-        if (!componentUploadedFile) {
-          return (
+        {/* Fallback for missing data */}
+        {!fileData &&
+          (currentStep === 'staging' || currentStep === 'mapping') && (
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                No file selected for deployment.
+                No file data available. Please upload and process a file first.
               </AlertDescription>
             </Alert>
-          );
-        }
-
-        return (
-          <DeployStep
-            currentFile={componentUploadedFile}
-            onStartNewImport={() => handleStepNavigation?.('upload')}
-            onViewData={() => {}}
-            onDownloadReport={() => {}}
-            onBack={handleBack}
-            isDeploying={isDeploying}
-            deploymentProgress={uploadProgress}
-          />
-        );
-
-      default:
-        return (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              Unknown workflow step: {currentStep}
-            </AlertDescription>
-          </Alert>
-        );
-    }
-  };
-
-  if (!dataManagement) {
-    return (
-      <div className="container mx-auto p-6">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Failed to initialize data management. Please refresh the page.
-          </AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
-  return (
-    <ProtectedRoute>
-      <div className={`max-w-7xl mx-auto p-6 space-y-6 ${className || ''}`}>
-        {/* Page Header */}
-        <div className="border-b border-gray-200 pb-4">
-          <h1 className="text-3xl font-bold text-gray-900">Data Management</h1>
-          <p className="mt-2 text-gray-600">
-            Import, validate, and deploy data to your settlement management
-            system
-          </p>
-        </div>
-
-        {/* Workflow Progress */}
-        {renderWorkflowProgress()}
-
-        {/* Alerts */}
-        {renderAlerts()}
-
-        {/* Main Content */}
-        <div className="bg-white rounded-lg border border-gray-200">
-          <div className="p-6">{renderStepContent()}</div>
-        </div>
-
-        {/* Debug Info (Development Only) */}
-        {process.env.NODE_ENV === 'development' && (
-          <details className="mt-8 p-4 bg-gray-50 rounded-lg">
-            <summary className="cursor-pointer font-medium text-gray-700">
-              Debug Information
-            </summary>
-            <div className="mt-2 space-y-2 text-sm text-gray-600">
-              <div>
-                <strong>Current Step:</strong> {currentStep}
-              </div>
-              <div>
-                <strong>Files Uploaded:</strong> {uploadedFiles.length}
-              </div>
-              <div>
-                <strong>Current File:</strong>{' '}
-                {currentFile?.original_filename || 'None'}
-              </div>
-              <div>
-                <strong>Field Mappings:</strong> {fieldMappings.length}
-              </div>
-              <div>
-                <strong>Validation Results:</strong> {validationResults.length}
-              </div>
-              <div>
-                <strong>Available Fields:</strong> {availableFields.length}
-              </div>
-              <div>
-                <strong>Is Processing:</strong> {isProcessing.toString()}
-              </div>
-              <div>
-                <strong>Is Validating:</strong> {isValidating.toString()}
-              </div>
-              <div>
-                <strong>Is Deploying:</strong> {isDeploying.toString()}
-              </div>
-            </div>
-          </details>
-        )}
+          )}
       </div>
     </ProtectedRoute>
   );

@@ -25,11 +25,36 @@ import {
   RefreshCw,
   Zap,
 } from 'lucide-react';
-import type {
-  ValidationRule,
-  DataType,
-  ValidationStepProps,
-} from '@/types/dataManagement';
+
+// Define interfaces directly in this file to avoid import issues
+interface ValidationRule {
+  field: string;
+  type: string;
+  message: string;
+  params?: Record<string, unknown>;
+}
+interface ValidationStepProps {
+  fieldMappings: Array<{
+    sourceColumn: string;
+    targetTable: string;
+    targetField: string;
+    required: boolean;
+    validated: boolean;
+    confidence?: number;
+    transformationRule?: string;
+  }>;
+  validationResults: Array<{
+    field: string;
+    errors: Array<string | { message: string }>;
+    warnings: Array<string | { message: string }>;
+    recordCount: number;
+    validCount?: number;
+  }>;
+  onValidate: () => Promise<boolean>;
+  onNext: () => void;
+  onBack: () => void;
+  isValidating?: boolean;
+}
 
 interface ValidationResultWithDetails {
   field: string;
@@ -54,7 +79,7 @@ interface ValidationSummary {
 // CORRECTED: Enhanced validation rule creation with postal code support
 export const createValidationRules = (
   fieldName: string,
-  dataType: DataType,
+  dataType: string,
   isRequired: boolean = false
 ): ValidationRule[] => {
   const rules: ValidationRule[] = [];
@@ -567,7 +592,9 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
                                   {typeof error === 'object' &&
                                   error !== null &&
                                   'message' in error
-                                    ? String(error.message)
+                                    ? String(
+                                        (error as { message: string }).message
+                                      )
                                     : String(error)}
                                 </li>
                               ))}
@@ -588,7 +615,9 @@ export const ValidationStep: React.FC<ValidationStepProps> = ({
                                   {typeof warning === 'object' &&
                                   warning !== null &&
                                   'message' in warning
-                                    ? String(warning.message)
+                                    ? String(
+                                        (warning as { message: string }).message
+                                      )
                                     : String(warning)}
                                 </li>
                               ))}

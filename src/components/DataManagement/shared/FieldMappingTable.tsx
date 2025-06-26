@@ -24,12 +24,54 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import { DatabaseField } from '@/constants/databaseSchema';
-import type {
-  ColumnType,
-  FieldMapping,
-  FieldMappingTableProps,
-} from '@/types/dataManagement';
+
+// Define interfaces directly in this file
+interface ColumnType {
+  name: string;
+  type: string;
+  sample: string[];
+  nullCount: number;
+  confidence: number;
+  patterns?: string[];
+  suggestions?: string[];
+  detectedPatterns?: string[];
+  qualityScore?: number;
+  issues?: string[];
+  column?: string;
+}
+
+interface FieldMapping {
+  sourceColumn: string;
+  targetTable: string;
+  targetField: string;
+  required: boolean;
+  validated: boolean;
+  confidence: number;
+  transformationRule?: string;
+}
+
+interface DatabaseField {
+  table: string;
+  field: string;
+  type: string;
+  description: string;
+  required?: boolean;
+  category?: string;
+}
+
+interface FieldMappingTableProps {
+  columnTypes?: ColumnType[];
+  fieldMappings?: FieldMapping[];
+  availableFields?: DatabaseField[];
+  onUpdateMapping: (
+    sourceColumn: string,
+    targetTable: string,
+    targetField: string
+  ) => void;
+  onCreateField?: (sourceColumn: string, suggestedType: string) => void;
+  sampleData?: Record<string, unknown[]>;
+  showSampleData?: boolean;
+}
 
 export const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
   columnTypes = [],
@@ -57,7 +99,11 @@ export const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
 
   const availableCategories = useMemo<string[]>(() => {
     const categories = Array.from(
-      new Set(availableFields.map((field: DatabaseField) => field.category))
+      new Set(
+        availableFields.map(
+          (field: DatabaseField) => field.category || 'General'
+        )
+      )
     );
     return categories.sort();
   }, [availableFields]);
@@ -103,7 +149,8 @@ export const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
 
     if (selectedCategory !== 'all') {
       filtered = filtered.filter(
-        (field: DatabaseField) => field.category === selectedCategory
+        (field: DatabaseField) =>
+          (field.category || 'General') === selectedCategory
       );
     }
 

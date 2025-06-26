@@ -17,16 +17,38 @@ import {
   TrendingUp,
   Info,
 } from 'lucide-react';
-import type {
-  DataType,
-  DataQuality,
-  StagingStepProps,
-} from '@/types/dataManagement';
+
+// Define interfaces directly in this file to avoid import issues
+
+type DataQuality = 'excellent' | 'good' | 'fair' | 'poor';
+
+interface StagingStepProps {
+  fileData: {
+    headers: string[];
+    rows: string[][];
+    totalRows: number;
+    fileName: string;
+    fileType: 'csv' | 'excel';
+    columnTypes: Array<{
+      name: string;
+      type: string;
+      sample: string[];
+      nullCount: number;
+      confidence: number;
+      patterns?: string[];
+      suggestions?: string[];
+      detectedPatterns?: string[];
+    }>;
+  };
+  isProcessing?: boolean;
+  onNext: () => void;
+  onBack: () => void;
+}
 
 // Use extended interface that's compatible with the imported ColumnType
 interface ColumnAnalysis {
   name: string;
-  type: DataType | string; // Allow both DataType and string for flexibility
+  type: string; // Use string for simplicity
   confidence: number;
   patterns: string[];
   suggestions: string[];

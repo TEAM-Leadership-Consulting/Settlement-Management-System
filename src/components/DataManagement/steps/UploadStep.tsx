@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import type { UploadedFile } from '@/types/dataManagement';
 import {
   Upload,
   FileText,
@@ -28,26 +29,6 @@ import {
   HardDrive,
   Zap,
 } from 'lucide-react';
-
-interface UploadedFile {
-  upload_id: number;
-  file_id: string;
-  original_filename: string;
-  file_size: number;
-  file_type: string;
-  upload_status:
-    | 'uploaded'
-    | 'staged'
-    | 'mapped'
-    | 'validated'
-    | 'ready'
-    | 'deployed'
-    | 'failed';
-  total_rows: number | null;
-  uploaded_at: string;
-  processed_at?: string;
-  error_message?: string;
-}
 
 interface UploadStepProps {
   uploadedFiles: UploadedFile[];

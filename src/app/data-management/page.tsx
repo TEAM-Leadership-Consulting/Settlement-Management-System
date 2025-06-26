@@ -15,7 +15,12 @@ import { ValidationStep } from '@/components/DataManagement/steps/ValidationStep
 import { ReviewStep } from '@/components/DataManagement/steps/ReviewStep';
 import { DeployStep } from '@/components/DataManagement/steps/DeployStep';
 import { useDataManagement } from '@/hooks/useDataManagement';
-import type { WorkflowStep } from '@/types/dataManagement';
+import type {
+  WorkflowStep,
+  UploadedFile,
+  FieldMapping,
+  ValidationResult,
+} from '@/types/dataManagement';
 
 // This is the default export that Next.js expects for a page component
 export default function DataManagementPage() {
@@ -69,8 +74,8 @@ export default function DataManagementPage() {
   const mappingStats = React.useMemo(() => {
     if (!fieldMappings?.length) return undefined;
 
-    const mapped = fieldMappings.filter(
-      (m) => m.targetTable && m.targetField
+    const mapped = fieldMappings.filter((m: FieldMapping) =>
+      Boolean(m.targetTable && m.targetField)
     ).length;
     const total = fieldMappings.length;
 
@@ -87,24 +92,28 @@ export default function DataManagementPage() {
     if (!validationResults?.length) return undefined;
 
     const errors = validationResults.reduce(
-      (sum, result) => sum + (result.errors?.length || 0),
+      (sum: number, result: ValidationResult) =>
+        sum + (result.errors?.length || 0),
       0
     );
     const warnings = validationResults.reduce(
-      (sum, result) => sum + (result.warnings?.length || 0),
+      (sum: number, result: ValidationResult) =>
+        sum + (result.warnings?.length || 0),
       0
     );
     const validated = validationResults.filter(
-      (result) => (result.errors?.length || 0) === 0
+      (result: ValidationResult) => (result.errors?.length || 0) === 0
     ).length;
 
     // Calculate total and valid for WorkflowProgress compatibility
     const total = validationResults.reduce(
-      (sum, result) => sum + (result.recordCount || 0),
+      (sum: number, result: ValidationResult) =>
+        sum + (result.recordCount || 0),
       0
     );
+
     const valid = validationResults.reduce(
-      (sum, result) => sum + (result.validCount || 0),
+      (sum: number, result: ValidationResult) => sum + (result.validCount ?? 0),
       0
     );
 
@@ -130,9 +139,9 @@ export default function DataManagementPage() {
     [handleFileUpload]
   );
 
-  // Handle file processing wrapper
+  // Handle file processing wrapper with proper typing
   const handleProcessFileWrapper = React.useCallback(
-    async (file: (typeof uploadedFiles)[0]) => {
+    async (file: UploadedFile) => {
       if (!handleProcessFile) return;
       try {
         await handleProcessFile(file);
@@ -152,11 +161,15 @@ export default function DataManagementPage() {
         case 'mapping':
           return !!fileData && currentFile?.upload_status === 'staged';
         case 'validation':
-          return fieldMappings.some((m) => m.targetTable && m.targetField);
+          return fieldMappings.some((m: FieldMapping) =>
+            Boolean(m.targetTable && m.targetField)
+          );
         case 'review':
           return (
             validationResults.length === 0 ||
-            validationResults.every((r) => (r.errors?.length || 0) === 0)
+            validationResults.every(
+              (r: ValidationResult) => (r.errors?.length || 0) === 0
+            )
           );
         case 'deploy':
           return (
@@ -231,7 +244,7 @@ export default function DataManagementPage() {
   // Handle template operations (mock implementation)
   const handleSaveMappingTemplate = async (
     templateName: string,
-    mappings: typeof fieldMappings
+    mappings: FieldMapping[]
   ) => {
     try {
       // In a real implementation, you would save to database
@@ -547,8 +560,8 @@ export default function DataManagementPage() {
                   tablesUpdated: Array.from(
                     new Set(
                       fieldMappings
-                        .filter((m) => m.targetTable)
-                        .map((m) => m.targetTable)
+                        .filter((m: FieldMapping) => Boolean(m.targetTable))
+                        .map((m: FieldMapping) => m.targetTable as string)
                     )
                   ),
                   startTime: new Date().toISOString(),
