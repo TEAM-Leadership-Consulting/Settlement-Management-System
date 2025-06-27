@@ -256,24 +256,45 @@ const detectNumber = (values: string[]): DetectionResult => {
 };
 
 /**
- * Date detection with format analysis
+ * IMPROVED Date detection - excludes reference IDs and case numbers
  */
 const detectDate = (values: string[]): DetectionResult => {
   const patterns: string[] = [];
 
   const validDates = values.filter((val) => {
-    const dateValue = new Date(val);
-    const isValid = !isNaN(dateValue.getTime());
+    // Skip values that look like reference IDs or case numbers
+    const hasReferencePattern = /^[A-Z]{2,3}-\d{4}-\d+$/i.test(val); // CA-2024-001 pattern
+    const hasAlphaNumeric = /^[A-Z]+[-_]?\d+[-_]?[A-Z\d]*$/i.test(val); // General alphanumeric IDs
 
-    if (isValid) {
-      // Detect common date formats
-      if (/^\d{4}-\d{2}-\d{2}/.test(val)) patterns.push('iso_format');
-      if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(val)) patterns.push('us_format');
-      if (/^\d{1,2}-\d{1,2}-\d{4}/.test(val)) patterns.push('dash_format');
-      if (val.includes('T') || val.includes('Z')) patterns.push('timestamp');
+    if (hasReferencePattern || hasAlphaNumeric) {
+      return false; // Not a date
     }
 
-    return isValid;
+    // Only consider values that could actually be dates
+    const couldBeDate =
+      /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(val) || // MM/DD/YYYY or MM-DD-YYYY
+      /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(val) || // YYYY/MM/DD or YYYY-MM-DD
+      /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2}$/.test(val) || // MM/DD/YY
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(val) || // ISO format
+      /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i.test(val); // Month names
+
+    if (!couldBeDate) {
+      return false;
+    }
+
+    // Try to parse as date
+    const dateValue = new Date(val);
+    const isValidDate = !isNaN(dateValue.getTime());
+
+    if (isValidDate) {
+      // Detect common date patterns
+      if (/^\d{4}-\d{2}-\d{2}/.test(val)) patterns.push('iso_format');
+      if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(val)) patterns.push('us_format');
+      if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(val)) patterns.push('dash_format');
+      if (val.includes('T') && val.includes(':')) patterns.push('datetime');
+    }
+
+    return isValidDate;
   });
 
   const confidence = validDates.length / values.length;
@@ -281,25 +302,25 @@ const detectDate = (values: string[]): DetectionResult => {
   return {
     type: 'date',
     confidence,
-    patterns: Array.from(new Set(patterns)),
+    patterns: ['date_format', ...Array.from(new Set(patterns))],
   };
 };
 
 /**
- * Boolean detection
+ * Boolean detection with common true/false patterns
  */
 const detectBoolean = (values: string[]): DetectionResult => {
+  const patterns: string[] = [];
   const booleanValues = new Set([
     'true',
     'false',
     'yes',
     'no',
-    '1',
-    '0',
     'y',
     'n',
+    '1',
+    '0',
   ]);
-  const patterns: string[] = [];
 
   const validBooleans = values.filter((val) => {
     const lower = val.toLowerCase();

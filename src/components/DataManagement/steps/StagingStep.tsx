@@ -118,8 +118,58 @@ export const StagingStep: React.FC<StagingStepProps> = ({
         // Convert type to string for consistency
         const typeString = String(columnType.type);
 
+        // OVERRIDE: Force ZIP code columns to be treated as postal_code instead of phone
+        const isZipCodeColumn = [
+          'zip',
+          'zipcode',
+          'zip_code',
+          'postal',
+          'postalcode',
+          'postal_code',
+          'postcode',
+        ].some((pattern) => columnType.name.toLowerCase().includes(pattern));
+
+        // OVERRIDE: Force reference ID columns to be treated as text instead of date
+        const isReferenceIdColumn = [
+          'case',
+          'case_id',
+          'caseid',
+          'reference',
+          'ref_id',
+          'refid',
+          'id',
+          'identifier',
+          'number',
+          'case_number',
+          'casenumber',
+        ].some((pattern) => columnType.name.toLowerCase().includes(pattern));
+
+        // Check if data looks like reference IDs (CA-2024-001 pattern)
+        const hasReferenceIdData = columnData.some((val) => {
+          if (!val) return false;
+          const str = String(val);
+          return (
+            /^[A-Z]{2,3}-\d{4}-\d+$/i.test(str) ||
+            /^[A-Z]+[-_]?\d+[-_]?[A-Z\d]*$/i.test(str)
+          );
+        });
+
+        let finalTypeString = typeString;
+        if (isZipCodeColumn && typeString === 'phone') {
+          finalTypeString = 'postal_code';
+          patterns.push('postal_code');
+        }
+
+        if (
+          (isReferenceIdColumn || hasReferenceIdData) &&
+          typeString === 'date'
+        ) {
+          finalTypeString = 'text';
+          patterns.push('reference_id');
+        }
+
         // EMAIL validation
-        if (typeString === 'email') {
+        if (finalTypeString === 'email') {
           const invalidEmails = columnData.filter(
             (val) => val && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(val))
           ).length;
@@ -129,7 +179,10 @@ export const StagingStep: React.FC<StagingStepProps> = ({
         }
 
         // POSTAL CODE validation (NEW - replaces incorrect phone validation for zip codes)
-        if (typeString === 'postal_code' || patterns.includes('postal_code')) {
+        if (
+          finalTypeString === 'postal_code' ||
+          patterns.includes('postal_code')
+        ) {
           const invalidPostalCodes = columnData.filter((val) => {
             if (!val) return false;
             const cleaned = String(val).replace(/[-\s]/g, '');
@@ -155,8 +208,10 @@ export const StagingStep: React.FC<StagingStepProps> = ({
           }
         }
 
-        // PHONE validation (IMPROVED - excludes zip codes)
-        if (typeString === 'phone') {
+        // In StagingStep.tsx, replace the column analysis logic with this fixed version:
+
+        // PHONE validation
+        if (finalTypeString === 'phone' && !patterns.includes('postal_code')) {
           const invalidPhones = columnData.filter((val) => {
             if (!val) return false;
             const cleaned = String(val).replace(/[-.\s\(\)\+]/g, '');
@@ -192,7 +247,7 @@ export const StagingStep: React.FC<StagingStepProps> = ({
         }
 
         // DATE validation
-        if (typeString === 'date') {
+        if (finalTypeString === 'date') {
           const invalidDates = columnData.filter(
             (val) => val && isNaN(Date.parse(String(val)))
           ).length;
@@ -251,7 +306,7 @@ export const StagingStep: React.FC<StagingStepProps> = ({
 
         return {
           name: columnType.name,
-          type: typeString, // Use string version consistently
+          type: finalTypeString, // Use string version consistently
           confidence: columnType.confidence,
           patterns,
           suggestions: Array.from(new Set(suggestions)),
