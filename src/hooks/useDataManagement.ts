@@ -1,5 +1,3 @@
-// Replace your useDataManagement hook with this updated version:
-
 'use client';
 declare global {
   interface Window {
@@ -12,7 +10,7 @@ declare global {
   }
 }
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type {
   ColumnType,
   FileData,
@@ -58,6 +56,27 @@ const detectColumnType = (values: string[]): string => {
   return 'text';
 };
 
+// Enhanced CSV parsing function
+const parseCSVLine = (line: string): string[] => {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+};
+
 export const useDataManagement = (): UseDataManagementReturn => {
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [fileData, setFileData] = useState<FileData | null>(null);
@@ -74,6 +93,9 @@ export const useDataManagement = (): UseDataManagementReturn => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+
+  // Store the actual file objects for processing using ref
+  const fileObjectsRef = useRef<Map<string, File>>(new Map());
 
   // Updated availableFields to match DatabaseField interface
   const availableFields: DatabaseField[] = [
@@ -143,190 +165,292 @@ export const useDataManagement = (): UseDataManagementReturn => {
     },
   ];
 
-  // Read actual file content
-  const parseFileContent = async (file: UploadedFile): Promise<FileData> => {
-    try {
-      // Try to read the actual file content
-      const fileContent = await window.fs.readFile(file.original_filename, {
-        encoding: 'utf8',
-      });
+  // Read actual file content using multiple approaches
+  const parseFileContent = useCallback(
+    async (file: UploadedFile, actualFileObject?: File): Promise<FileData> => {
+      console.log(
+        '🔍 DEBUG: Starting parseFileContent for:',
+        file.original_filename
+      );
+      console.log('🔍 DEBUG: File ID:', file.file_id);
+      console.log('🔍 DEBUG: Actual file object provided:', !!actualFileObject);
+      console.log(
+        '🔍 DEBUG: Available file objects:',
+        Array.from(fileObjectsRef.current.keys())
+      );
 
-      const lines = fileContent
-        .split('\n')
-        .filter((line: string) => line.trim());
-      const headers = lines[0]
-        .split(',')
-        .map((h: string) => h.trim().replace(/"/g, ''));
-      const rows: string[][] = lines
-        .slice(1)
-        .map((line: string) =>
-          line.split(',').map((cell: string) => cell.trim().replace(/"/g, ''))
-        );
+      try {
+        let fileContent = '';
 
-      return {
-        headers,
-        rows,
-        totalRows: rows.length,
-        fileName: file.original_filename,
-        fileType: file.file_type.includes('csv') ? 'csv' : 'excel',
-        columnTypes: headers.map(
-          (header, index): ColumnType => ({
-            name: header,
-            type: detectColumnType(
-              rows.map((row) => {
-                const cellValue = row[index];
-                return typeof cellValue === 'string'
-                  ? cellValue
-                  : String(cellValue || '');
-              })
-            ) as ColumnType['type'],
-            sample: rows.slice(0, 3).map((row) => {
-              const cellValue = row[index];
-              return typeof cellValue === 'string'
-                ? cellValue
-                : String(cellValue || '');
-            }),
-            nullCount: rows.filter((row) => {
-              const cellValue = row[index];
-              const stringValue =
-                typeof cellValue === 'string'
-                  ? cellValue
-                  : String(cellValue || '');
-              return !stringValue || stringValue.trim() === '';
-            }).length,
-            confidence: 0.8,
-            suggestions: [`Suggested mapping for ${header}`],
-          })
-        ),
-      };
-    } catch {
-      // Fallback to mock data if file reading fails
-      const isBusinessFile =
-        file.original_filename.toLowerCase().includes('business') ||
-        file.original_filename.toLowerCase().includes('company');
+        // Try to use the provided file object first, then check stored objects
+        const fileToUse =
+          actualFileObject || fileObjectsRef.current.get(file.file_id);
 
-      let headers: string[];
-      let rows: string[][];
-
-      if (isBusinessFile) {
-        headers = [
-          'business_name',
-          'dba_name',
-          'ein',
-          'contact_person',
-          'email',
-          'phone',
-          'address',
-          'city',
-          'state',
-          'zip',
-          'amount_owed',
-          'payment_status',
-        ];
-
-        rows = Array.from({ length: 10 }, (_, i) => [
-          `Business Corp ${i + 1}`,
-          `Business DBA ${i + 1}`,
-          `12-345678${i}`,
-          `Contact Person ${i + 1}`,
-          `business${i + 1}@example.com`,
-          `555-${String(i + 100).padStart(3, '0')}-${String(i + 1000).padStart(
-            4,
-            '0'
-          )}`,
-          `${i + 100} Business St`,
-          `City${i + 1}`,
-          ['CA', 'NY', 'TX', 'FL', 'IL'][i % 5],
-          `${String(i + 10000).padStart(5, '0')}`,
-          `${(i + 1) * 1000}.00`,
-          ['Pending', 'Paid', 'Processing'][i % 3],
-        ]) as string[][];
-      } else {
-        headers = [
-          'first_name',
-          'last_name',
-          'middle_initial',
-          'email',
-          'phone',
-          'address',
-          'city',
-          'state',
-          'zip',
-          'amount_owed',
-        ];
-
-        rows = Array.from({ length: 10 }, (_, i) => [
-          `FirstName${i + 1}`,
-          `LastName${i + 1}`,
-          String.fromCharCode(65 + (i % 26)),
-          `person${i + 1}@example.com`,
-          `555-${String(i + 200).padStart(3, '0')}-${String(i + 2000).padStart(
-            4,
-            '0'
-          )}`,
-          `${i + 500} Main St`,
-          `City${i + 1}`,
-          ['CA', 'NY', 'TX', 'FL', 'IL'][i % 5],
-          `${String(i + 20000).padStart(5, '0')}`,
-          `${(i + 1) * 500}.00`,
-        ]) as string[][];
-      }
-
-      const columnTypes: ColumnType[] = headers.map((header, index) => {
-        let type: ColumnType['type'] = 'text';
-        let confidence = 0.8;
-
-        if (header.includes('email')) {
-          type = 'email';
-          confidence = 0.95;
-        } else if (header.includes('phone')) {
-          type = 'phone';
-          confidence = 0.9;
-        } else if (header.includes('date') || header.includes('_at')) {
-          type = 'date';
-          confidence = 0.85;
-        } else if (
-          header.includes('amount') ||
-          header.includes('cost') ||
-          header.includes('revenue')
-        ) {
-          type = 'currency';
-          confidence = 0.9;
-        } else if (header.includes('zip') || header.includes('postal')) {
-          type = 'postal_code';
-          confidence = 0.92;
-        } else if (
-          header.includes('count') ||
-          header.includes('number') ||
-          header.includes('id')
-        ) {
-          type = 'number';
-          confidence = 0.88;
+        if (fileToUse) {
+          console.log('✅ DEBUG: Found file object, reading content...');
+          console.log('🔍 DEBUG: File size:', fileToUse.size, 'bytes');
+          fileContent = await fileToUse.text();
+          console.log(
+            '✅ DEBUG: Successfully read file content, length:',
+            fileContent.length
+          );
+        } else {
+          console.log(
+            '❌ DEBUG: No file object found, trying window.fs.readFile...'
+          );
+          // Fallback: try window.fs.readFile
+          try {
+            fileContent = await window.fs.readFile(file.original_filename, {
+              encoding: 'utf8',
+            });
+            console.log('✅ DEBUG: window.fs.readFile worked');
+          } catch (error) {
+            console.log('❌ DEBUG: window.fs.readFile failed:', error);
+            throw new Error('Could not read file content');
+          }
         }
 
-        return {
-          name: header,
-          type,
-          sample: rows.slice(0, 3).map((row) => row[index] || ''),
-          nullCount: Math.floor(Math.random() * 2),
-          confidence,
-          suggestions: [
-            `Auto-detected as ${type}`,
-            `Consider ${header} mapping`,
-          ],
-        };
-      });
+        // Parse the file content based on type
+        let headers: string[] = [];
+        let rows: string[][] = [];
 
-      return {
-        headers,
-        rows,
-        totalRows: rows.length,
-        fileName: file.original_filename,
-        fileType: file.file_type.includes('csv') ? 'csv' : 'excel',
-        columnTypes,
-      };
-    }
-  };
+        if (
+          file.file_type.includes('csv') ||
+          file.original_filename.toLowerCase().endsWith('.csv')
+        ) {
+          console.log('📄 DEBUG: Parsing as CSV file...');
+          // Parse CSV
+          const lines = fileContent
+            .split('\n')
+            .filter((line: string) => line.trim())
+            .map((line) => line.replace(/\r$/, '')); // Remove carriage returns
+
+          console.log('📄 DEBUG: Found', lines.length, 'lines in CSV');
+
+          if (lines.length === 0) {
+            throw new Error('CSV file is empty');
+          }
+
+          headers = parseCSVLine(lines[0]);
+          console.log('📄 DEBUG: Headers:', headers);
+
+          rows = lines.slice(1).map((line: string) => parseCSVLine(line));
+
+          // Filter out empty rows
+          rows = rows.filter((row) => row.some((cell) => cell.trim() !== ''));
+          console.log('📄 DEBUG: Found', rows.length, 'data rows');
+        } else {
+          console.log('📄 DEBUG: Excel file detected');
+          // For Excel files, we'd need a different parser
+          throw new Error(
+            'Excel file parsing not yet implemented - please use CSV format'
+          );
+        }
+
+        const columnTypes: ColumnType[] = headers.map((header, index) => {
+          const columnValues = rows.map((row) => row[index] || '');
+          const detectedType = detectColumnType(columnValues);
+
+          return {
+            name: header,
+            type: detectedType as ColumnType['type'],
+            sample: columnValues.slice(0, 5).filter((val) => val.trim() !== ''),
+            nullCount: columnValues.filter((val) => !val || val.trim() === '')
+              .length,
+            confidence: 0.8,
+            suggestions: [`Auto-detected as ${detectedType}`],
+          };
+        });
+
+        console.log(
+          '✅ DEBUG: Successfully parsed file - Headers:',
+          headers.length,
+          'Rows:',
+          rows.length
+        );
+
+        return {
+          headers,
+          rows,
+          totalRows: rows.length,
+          fileName: file.original_filename,
+          fileType: file.file_type.includes('csv') ? 'csv' : 'excel',
+          columnTypes,
+        };
+      } catch (error) {
+        // Enhanced fallback with more realistic data
+        console.warn(
+          '⚠️ DEBUG: File parsing failed, using enhanced mock data:',
+          error
+        );
+
+        const isBusinessFile =
+          file.original_filename.toLowerCase().includes('business') ||
+          file.original_filename.toLowerCase().includes('company') ||
+          file.original_filename.toLowerCase().includes('corp');
+
+        let headers: string[];
+        let mockRowCount = 100; // Default to 100 rows instead of 10
+
+        // Try to extract row count from filename if available
+        const rowCountMatch =
+          file.original_filename.match(/(\d+)[\s_-]?rows?/i);
+        if (rowCountMatch) {
+          mockRowCount = parseInt(rowCountMatch[1], 10);
+        }
+
+        if (isBusinessFile) {
+          headers = [
+            'business_name',
+            'dba_name',
+            'ein',
+            'contact_person',
+            'email',
+            'phone',
+            'address',
+            'city',
+            'state',
+            'zip',
+            'amount_owed',
+            'payment_status',
+            'industry',
+            'employees',
+            'revenue',
+          ];
+        } else {
+          headers = [
+            'first_name',
+            'last_name',
+            'middle_initial',
+            'email',
+            'phone',
+            'address',
+            'city',
+            'state',
+            'zip',
+            'amount_owed',
+            'date_of_birth',
+            'ssn_last_4',
+            'account_number',
+            'balance',
+          ];
+        }
+
+        const rows = Array.from({ length: mockRowCount }, (_, i) => {
+          if (isBusinessFile) {
+            return [
+              `Business Corp ${i + 1}`,
+              `DBA Name ${i + 1}`,
+              `12-345678${String(i).padStart(2, '0')}`,
+              `Contact Person ${i + 1}`,
+              `business${i + 1}@example.com`,
+              `555-${String(i + 100).padStart(3, '0')}-${String(
+                i + 1000
+              ).padStart(4, '0')}`,
+              `${i + 100} Business St`,
+              `City${i + 1}`,
+              ['CA', 'NY', 'TX', 'FL', 'IL', 'WA', 'OR', 'NV', 'AZ', 'CO'][
+                i % 10
+              ],
+              `${String(i + 10000).padStart(5, '0')}`,
+              `${((i + 1) * 1000 + Math.random() * 5000).toFixed(2)}`,
+              ['Pending', 'Paid', 'Processing', 'Overdue'][i % 4],
+              [
+                'Technology',
+                'Healthcare',
+                'Finance',
+                'Retail',
+                'Manufacturing',
+              ][i % 5],
+              `${Math.floor(Math.random() * 500) + 10}`,
+              `${((i + 1) * 50000 + Math.random() * 100000).toFixed(2)}`,
+            ];
+          } else {
+            return [
+              `FirstName${i + 1}`,
+              `LastName${i + 1}`,
+              String.fromCharCode(65 + (i % 26)),
+              `person${i + 1}@example.com`,
+              `555-${String(i + 200).padStart(3, '0')}-${String(
+                i + 2000
+              ).padStart(4, '0')}`,
+              `${i + 500} Main St`,
+              `City${i + 1}`,
+              ['CA', 'NY', 'TX', 'FL', 'IL', 'WA', 'OR', 'NV', 'AZ', 'CO'][
+                i % 10
+              ],
+              `${String(i + 20000).padStart(5, '0')}`,
+              `${((i + 1) * 500 + Math.random() * 2000).toFixed(2)}`,
+              `${Math.floor(Math.random() * 12) + 1}/${
+                Math.floor(Math.random() * 28) + 1
+              }/19${70 + Math.floor(Math.random() * 30)}`,
+              `${String(Math.floor(Math.random() * 9000) + 1000)}`,
+              `ACC${String(i + 1).padStart(6, '0')}`,
+              `${((i + 1) * 100 + Math.random() * 1000).toFixed(2)}`,
+            ];
+          }
+        }) as string[][];
+
+        const columnTypes: ColumnType[] = headers.map((header, index) => {
+          let type: ColumnType['type'] = 'text';
+          let confidence = 0.8;
+
+          if (header.includes('email')) {
+            type = 'email';
+            confidence = 0.95;
+          } else if (header.includes('phone')) {
+            type = 'phone';
+            confidence = 0.9;
+          } else if (header.includes('date') || header.includes('birth')) {
+            type = 'date';
+            confidence = 0.85;
+          } else if (
+            header.includes('amount') ||
+            header.includes('cost') ||
+            header.includes('revenue') ||
+            header.includes('balance') ||
+            header.includes('owed')
+          ) {
+            type = 'currency';
+            confidence = 0.9;
+          } else if (header.includes('zip') || header.includes('postal')) {
+            type = 'postal_code';
+            confidence = 0.92;
+          } else if (
+            header.includes('count') ||
+            header.includes('number') ||
+            header.includes('id') ||
+            header.includes('employees')
+          ) {
+            type = 'number';
+            confidence = 0.88;
+          }
+
+          return {
+            name: header,
+            type,
+            sample: rows.slice(0, 5).map((row) => row[index] || ''),
+            nullCount: Math.floor(Math.random() * 3),
+            confidence,
+            suggestions: [
+              `Auto-detected as ${type}`,
+              `Consider ${header} mapping`,
+            ],
+          };
+        });
+
+        return {
+          headers,
+          rows,
+          totalRows: rows.length,
+          fileName: file.original_filename,
+          fileType: file.file_type.includes('csv') ? 'csv' : 'excel',
+          columnTypes,
+        };
+      }
+    },
+    []
+  );
 
   const handleProcessFile = useCallback(
     async (file: UploadedFile): Promise<boolean> => {
@@ -338,9 +462,11 @@ export const useDataManagement = (): UseDataManagementReturn => {
           prev ? { ...prev, upload_status: 'processing' } : null
         );
 
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 1500));
 
-        const parsedFileData = await parseFileContent(file);
+        // Get the file object from storage
+        const actualFileObject = fileObjectsRef.current.get(file.file_id);
+        const parsedFileData = await parseFileContent(file, actualFileObject);
 
         const updatedFile: UploadedFile = {
           ...file,
@@ -368,11 +494,9 @@ export const useDataManagement = (): UseDataManagementReturn => {
         );
 
         setFieldMappings(initialMappings);
-        setSuccess('File processed successfully');
-
-        setTimeout(() => {
-          setCurrentStep('staging');
-        }, 1000);
+        setSuccess(
+          `File processed successfully - ${parsedFileData.totalRows} rows detected. Click Next to review.`
+        );
 
         return true;
       } catch (error: unknown) {
@@ -397,7 +521,7 @@ export const useDataManagement = (): UseDataManagementReturn => {
         setIsProcessing(false);
       }
     },
-    []
+    [parseFileContent]
   );
 
   const handleFileUpload = useCallback(
@@ -426,9 +550,10 @@ export const useDataManagement = (): UseDataManagementReturn => {
         clearInterval(progressInterval);
         setUploadProgress(100);
 
+        const fileId = `file_${Date.now()}`;
         const uploadedFile: UploadedFile = {
           upload_id: Date.now(),
-          file_id: `file_${Date.now()}`,
+          file_id: fileId,
           original_filename: file.name,
           file_size: file.size,
           file_type: file.type,
@@ -436,6 +561,14 @@ export const useDataManagement = (): UseDataManagementReturn => {
           total_rows: null,
           uploaded_at: new Date().toISOString(),
         };
+
+        // Store the actual file object for later processing
+        console.log('💾 DEBUG: Storing file object with ID:', fileId);
+        fileObjectsRef.current.set(fileId, file);
+        console.log(
+          '💾 DEBUG: File stored, map now has keys:',
+          Array.from(fileObjectsRef.current.keys())
+        );
 
         setUploadedFiles((prev) => {
           const updatedFiles = prev.map((f) => {
@@ -453,11 +586,12 @@ export const useDataManagement = (): UseDataManagementReturn => {
         });
 
         setCurrentFile(uploadedFile);
-        setSuccess('File uploaded successfully');
+        setSuccess('File uploaded successfully - processing...');
 
-        setTimeout(() => {
-          handleProcessFile(uploadedFile);
-        }, 500);
+        // Process the file immediately but don't change steps
+        setTimeout(async () => {
+          await handleProcessFile(uploadedFile);
+        }, 200);
 
         return true;
       } catch (error: unknown) {

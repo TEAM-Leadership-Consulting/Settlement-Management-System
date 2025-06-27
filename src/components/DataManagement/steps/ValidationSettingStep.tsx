@@ -1,4 +1,3 @@
-// src/components/DataManagement/steps/ValidationSettingsStep.tsx
 'use client';
 
 import React, { useState } from 'react';

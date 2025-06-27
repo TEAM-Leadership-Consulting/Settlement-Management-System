@@ -1,5 +1,3 @@
-// src/components/DataManagement/steps/ValidationStep.tsx
-
 'use client';
 
 import React, { useMemo } from 'react';
@@ -26,7 +24,6 @@ import {
   Zap,
 } from 'lucide-react';
 
-// Define interfaces directly in this file to avoid import issues
 interface ValidationRule {
   field: string;
   type: string;
@@ -76,7 +73,6 @@ interface ValidationSummary {
   canProceed: boolean;
 }
 
-// CORRECTED: Enhanced validation rule creation with postal code support
 export const createValidationRules = (
   fieldName: string,
   dataType: string,
@@ -84,7 +80,6 @@ export const createValidationRules = (
 ): ValidationRule[] => {
   const rules: ValidationRule[] = [];
 
-  // Required field validation
   if (isRequired) {
     rules.push({
       field: fieldName,
@@ -162,7 +157,7 @@ export const createValidationRules = (
   return rules;
 };
 
-// CORRECTED: Complete validateValue function with postal code support
+// Complete validateValue function
 export const validateValue = (
   value: unknown,
   rules: ValidationRule[],
@@ -172,7 +167,6 @@ export const validateValue = (
   const stringValue = value ? String(value).trim() : '';
 
   for (const rule of rules) {
-    // Ensure field is always a string
     const fieldName = rule.field || 'unknown_field';
 
     switch (rule.type) {

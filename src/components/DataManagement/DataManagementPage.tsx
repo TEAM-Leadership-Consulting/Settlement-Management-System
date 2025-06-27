@@ -70,9 +70,6 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = () => {
 
     // Navigate to data view page with file context
     window.open(`/data-management/view/${currentFile.file_id}`, '_blank');
-
-    // Alternative: Use Next.js router if you have it available
-    // router.push(`/data-management/view/${currentFile.file_id}`);
   }, [currentFile]);
 
   const handleDownloadReport = useCallback(() => {
