@@ -1,7 +1,7 @@
 // src/components/DataManagement/steps/EnhancedValidationStep.tsx
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -37,6 +37,7 @@ import {
   RefreshCw,
   Copy,
   AlertCircle,
+  Clock,
 } from 'lucide-react';
 
 // Types - matching your existing interfaces
@@ -111,6 +112,266 @@ interface EnhancedValidationStepProps {
   validationProgress?: number;
 }
 
+// Replace the existing useValidationTimeEstimate function (lines 139-184) with this optimized version:
+
+const useValidationTimeEstimate = (
+  fileData: { totalRows: number } | null,
+  validationSettings: {
+    validateEmails: boolean;
+    validatePhones: boolean;
+    validateDates: boolean;
+    validatePostalCodes: boolean;
+    validateCurrency: boolean;
+    validateSSN: boolean;
+    validateTaxId: boolean;
+    enableDuplicateDetection: boolean;
+    duplicateMatchType: '100_percent' | 'fuzzy' | 'custom';
+    sampleValidation: boolean;
+    sampleSize: number;
+    batchSize: number;
+  }
+): number => {
+  return useMemo((): number => {
+    if (!fileData) return 60000; // 1 minute default
+
+    const rows = fileData.totalRows;
+
+    // Apply sample reduction first
+    const effectiveRows = validationSettings.sampleValidation
+      ? Math.ceil(rows * (validationSettings.sampleSize / 100))
+      : rows;
+
+    const activeValidations = [
+      validationSettings.validateEmails,
+      validationSettings.validatePhones,
+      validationSettings.validateDates,
+      validationSettings.validatePostalCodes,
+      validationSettings.validateCurrency,
+      validationSettings.validateSSN,
+      validationSettings.validateTaxId,
+    ].filter(Boolean).length;
+
+    let totalSeconds = 0;
+
+    // Field validation time (much faster with optimizations)
+    if (activeValidations > 0) {
+      const validationTime = effectiveRows / 10000; // 10k rows per second
+      totalSeconds += validationTime * activeValidations;
+    }
+
+    // Optimized duplicate detection time
+    if (validationSettings.enableDuplicateDetection) {
+      let duplicateTime: number;
+
+      if (validationSettings.duplicateMatchType === 'fuzzy') {
+        // Fuzzy matching is still expensive but much better than before
+        duplicateTime = effectiveRows / 1000; // 1k rows per second
+      } else {
+        // Exact matching with hash map optimization - much faster!
+        duplicateTime = effectiveRows / 15000; // 15k rows per second
+      }
+
+      totalSeconds += duplicateTime;
+    }
+
+    // Batch processing overhead
+    const numberOfBatches = Math.ceil(
+      effectiveRows / (validationSettings.batchSize || 1000)
+    );
+    const batchOverhead = numberOfBatches * 0.1; // 100ms per batch
+    totalSeconds += batchOverhead;
+
+    // Add 20% safety margin for browser performance variability
+    totalSeconds = totalSeconds * 1.2;
+
+    // Convert to milliseconds and ensure minimum of 10 seconds
+    return Math.max(10000, Math.ceil(totalSeconds * 1000));
+  }, [fileData, validationSettings]);
+};
+const SmoothValidationProgress: React.FC<{
+  isValidating: boolean;
+  actualProgress: number;
+  estimatedTimeMs: number;
+  fileData: {
+    headers: string[];
+    rows: string[][];
+    totalRows: number;
+  } | null;
+  validationSettings: ValidationSettings;
+}> = ({
+  isValidating,
+  actualProgress,
+  estimatedTimeMs,
+  fileData,
+  validationSettings,
+}) => {
+  const [smoothProgress, setSmoothProgress] = useState(0);
+  const [timeElapsed, setTimeElapsed] = useState(0);
+  const startTimeRef = useRef<number>(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Reset when validation starts
+  useEffect(() => {
+    if (isValidating && actualProgress === 0) {
+      setSmoothProgress(0);
+      setTimeElapsed(0);
+      startTimeRef.current = Date.now();
+    }
+  }, [isValidating, actualProgress]);
+
+  // Smooth progress calculation
+  useEffect(() => {
+    if (!isValidating) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
+    }
+
+    intervalRef.current = setInterval(() => {
+      const now = Date.now();
+      const elapsed = now - startTimeRef.current;
+      setTimeElapsed(elapsed);
+
+      // Calculate time-based progress (never exceeds 95% until actual completion)
+      const timeBasedProgress = Math.min(95, (elapsed / estimatedTimeMs) * 100);
+
+      // Calculate stage-based progress zones
+      const getStageProgress = () => {
+        if (actualProgress >= 100) return 100;
+        if (actualProgress >= 75) {
+          // In the final heavy processing stage (75-100%)
+          const stageProgress = 75 + (timeBasedProgress - 75) * 0.23;
+          return Math.min(98, stageProgress);
+        }
+        if (actualProgress >= 50) {
+          // In data conversion stage (50-75%)
+          const stageProgress = 50 + (timeBasedProgress - 50) * 0.5;
+          return Math.min(75, Math.max(actualProgress, stageProgress));
+        }
+        if (actualProgress >= 25) {
+          // In setup stage (25-50%)
+          const stageProgress = 25 + (timeBasedProgress - 25) * 0.5;
+          return Math.min(50, Math.max(actualProgress, stageProgress));
+        }
+        // Initial stage (0-25%)
+        return Math.min(25, Math.max(actualProgress, timeBasedProgress));
+      };
+
+      const newProgress = getStageProgress();
+      setSmoothProgress(newProgress);
+    }, 1000);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [isValidating, actualProgress, estimatedTimeMs]);
+
+  // Format time remaining
+  const getTimeRemaining = () => {
+    if (!isValidating) return '';
+
+    const remainingMs = Math.max(0, estimatedTimeMs - timeElapsed);
+    const remainingMinutes = Math.ceil(remainingMs / 60000);
+
+    if (remainingMinutes < 1) return '< 1 min remaining';
+    if (remainingMinutes === 1) return '1 min remaining';
+    return `${remainingMinutes} mins remaining`;
+  };
+
+  // Get current stage description
+  const getCurrentStage = () => {
+    if (actualProgress >= 100) return 'Validation complete!';
+    if (actualProgress >= 75)
+      return 'Running validation checks... (this may take a while)';
+    if (actualProgress >= 50) return 'Converting data format...';
+    if (actualProgress >= 25) return 'Setting up data validator...';
+    return 'Initializing validation settings...';
+  };
+
+  if (!isValidating && actualProgress === 0) return null;
+
+  return (
+    <Card className="border-blue-200 bg-blue-50">
+      <CardContent className="pt-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            {actualProgress >= 100 ? (
+              <CheckCircle className="h-5 w-5 text-green-500" />
+            ) : (
+              <RefreshCw className="h-5 w-5 animate-spin text-blue-500" />
+            )}
+            <span className="font-medium">
+              {actualProgress >= 100
+                ? 'Validation Complete'
+                : 'Validating Data'}
+            </span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Badge variant="secondary">{Math.round(smoothProgress)}%</Badge>
+            {isValidating && actualProgress < 100 && (
+              <Badge variant="outline" className="text-sm">
+                <Clock className="h-3 w-3 mr-1" />
+                {getTimeRemaining()}
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="relative">
+            <Progress value={smoothProgress} className="w-full h-3" />
+            <div className="absolute top-0 left-0 w-full h-3 pointer-events-none">
+              {[25, 50, 75, 100].map((checkpoint) => (
+                <div
+                  key={checkpoint}
+                  className={`absolute top-0 w-0.5 h-3 ${
+                    actualProgress >= checkpoint
+                      ? 'bg-green-600'
+                      : 'bg-gray-300'
+                  }`}
+                  style={{ left: `${checkpoint}%` }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="text-sm text-muted-foreground">
+            {getCurrentStage()}
+          </div>
+
+          <div className="text-sm text-muted-foreground">
+            Processing{' '}
+            {validationSettings?.sampleValidation ? 'sample of ' : ''}
+            {fileData?.totalRows || 0} rows
+          </div>
+        </div>
+
+        {actualProgress >= 75 && actualProgress < 100 && (
+          <div className="bg-orange-50 border border-orange-200 rounded p-3">
+            <div className="text-sm">
+              <div className="font-medium text-orange-800 mb-1">
+                Heavy Processing Stage
+              </div>
+              <div className="text-orange-700">
+                The validation is now processing duplicate detection and complex
+                rules. This stage typically takes{' '}
+                {Math.round((estimatedTimeMs * 0.6) / 60000)} -{' '}
+                {Math.round((estimatedTimeMs * 0.8) / 60000)} minutes of the
+                total validation time.
+              </div>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
 export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
   fieldMappings,
   validationResults,
@@ -164,7 +425,10 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
       sampleValidation: false,
       sampleSize: 10,
     });
-
+  const estimatedTimeMs = useValidationTimeEstimate(
+    fileData,
+    validationSettings
+  );
   // Auto-detect validation types needed based on field mappings
   const detectedValidationTypes = useMemo(() => {
     const types = {
@@ -227,6 +491,18 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
     };
   }, [fieldMappings, validationResults]);
 
+  const activeValidations = useMemo(() => {
+    return [
+      validationSettings.validateEmails,
+      validationSettings.validatePhones,
+      validationSettings.validateDates,
+      validationSettings.validatePostalCodes,
+      validationSettings.validateCurrency,
+      validationSettings.validateSSN,
+      validationSettings.validateTaxId,
+    ].filter(Boolean).length;
+  }, [validationSettings]);
+
   // Auto-set validation settings based on detected types
   React.useEffect(() => {
     setValidationSettings((prev) => ({
@@ -270,44 +546,58 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
   };
 
   // Rough estimation based on rows and active validations
+  // Replace the getEstimatedTime function (lines 527-563) with this optimized version:
+
   const getEstimatedTime = () => {
     if (!fileData) return '< 1 minute';
 
     const rows = fileData.totalRows;
+
+    // Apply sample reduction first
+    const effectiveRows = validationSettings.sampleValidation
+      ? Math.ceil(rows * (validationSettings.sampleSize / 100))
+      : rows;
+
     const activeValidations = [
       validationSettings.validateEmails,
       validationSettings.validatePhones,
       validationSettings.validateDates,
       validationSettings.validatePostalCodes,
       validationSettings.validateCurrency,
+      validationSettings.validateSSN,
+      validationSettings.validateTaxId,
     ].filter(Boolean).length;
 
-    // Base time calculation (1 second per 1000 rows)
-    const baseTime = Math.ceil(rows / 1000);
+    let estimatedSeconds = 0;
 
-    // Multiply by active validations
-    const multiplier = Math.max(1, activeValidations);
-    let estimatedSeconds = baseTime * multiplier;
+    // Field validation time (optimized)
+    if (activeValidations > 0) {
+      const validationTime = effectiveRows / 10000; // Much faster now
+      estimatedSeconds += validationTime * activeValidations;
+    }
 
-    // Duplicate detection is expensive - add significant time
+    // Optimized duplicate detection time
     if (validationSettings.enableDuplicateDetection) {
-      // Duplicate detection is O(n²) complexity - much slower
-      const duplicateTime = Math.ceil(rows / 100); // Much more expensive
+      let duplicateTime: number;
+
+      if (validationSettings.duplicateMatchType === 'fuzzy') {
+        duplicateTime = effectiveRows / 1000; // Still slower but manageable
+      } else {
+        duplicateTime = effectiveRows / 15000; // Much faster with hash optimization
+      }
+
       estimatedSeconds += duplicateTime;
     }
 
-    // Apply sample reduction BEFORE formatting (this was the bug)
-    if (validationSettings.sampleValidation) {
-      estimatedSeconds = Math.ceil(
-        estimatedSeconds * (validationSettings.sampleSize / 100)
-      );
-    }
+    // Add processing overhead and safety margin
+    estimatedSeconds = estimatedSeconds * 1.3; // 30% buffer
 
     // Format the time
-    if (estimatedSeconds < 60) return '< 1 minute';
+    if (estimatedSeconds < 10) return '< 10 seconds';
+    if (estimatedSeconds < 60) return `${Math.ceil(estimatedSeconds)} seconds`;
     if (estimatedSeconds < 300)
       return `${Math.ceil(estimatedSeconds / 60)} minute(s)`;
-    return `${Math.ceil(estimatedSeconds / 60)} minute(s)`;
+    return `${Math.ceil(estimatedSeconds / 60)} minutes`;
   };
 
   return (
@@ -511,6 +801,48 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
                   50-80% for large datasets.
                 </AlertDescription>
               </Alert>
+              {/* Performance Recommendations */}
+              {fileData && fileData.totalRows > 50000 && (
+                <Alert className="mt-4">
+                  <Zap className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>
+                      Large Dataset Detected (
+                      {fileData.totalRows.toLocaleString()} rows):
+                    </strong>
+                    <ul className="mt-2 space-y-1 text-sm">
+                      {!validationSettings.sampleValidation && (
+                        <li>
+                          • Consider enabling Sample Validation (10%) to reduce
+                          processing time to ~
+                          {Math.ceil((fileData.totalRows * 0.1) / 15000)}{' '}
+                          seconds
+                        </li>
+                      )}
+                      {validationSettings.enableDuplicateDetection &&
+                        validationSettings.duplicateMatchType === 'fuzzy' && (
+                          <li>
+                            • Fuzzy matching on large datasets can be slow. Try
+                            Exact Match first for faster results
+                          </li>
+                        )}
+                      {(validationSettings.batchSize || 1000) < 2000 &&
+                        fileData.totalRows > 100000 && (
+                          <li>
+                            • Increase batch size to 2000-5000 in Advanced
+                            settings for better performance
+                          </li>
+                        )}
+                      {activeValidations > 5 && (
+                        <li>
+                          • Consider disabling unused validation types to
+                          improve speed
+                        </li>
+                      )}
+                    </ul>
+                  </AlertDescription>
+                </Alert>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -672,7 +1004,7 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
                       <Alert>
                         <CheckCircle className="h-4 w-4" />
                         <AlertDescription>
-                          <strong>Recommended Settings:</strong>
+                          <strong>Top 4 Common Settings:</strong>
                           <br />
                           • Names/Addresses: Fuzzy + Flag as Warning
                           <br />
@@ -894,27 +1226,14 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
       </Tabs>
 
       {/* Validation Progress */}
-      {isValidating && (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <RefreshCw className="h-4 w-4 animate-spin" />
-                  <span className="font-medium">Validating Data...</span>
-                </div>
-                <Badge variant="secondary">{validationProgress}%</Badge>
-              </div>
-              <Progress value={validationProgress} className="w-full" />
-              <div className="text-sm text-muted-foreground">
-                Processing{' '}
-                {validationSettings.sampleValidation ? 'sample of ' : ''}
-                {fileData?.totalRows || 0} rows
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+
+      <SmoothValidationProgress
+        isValidating={isValidating}
+        actualProgress={validationProgress}
+        estimatedTimeMs={estimatedTimeMs}
+        fileData={fileData}
+        validationSettings={validationSettings}
+      />
 
       {/* Validation Results Summary */}
       {validationResults.length > 0 && !isValidating && (

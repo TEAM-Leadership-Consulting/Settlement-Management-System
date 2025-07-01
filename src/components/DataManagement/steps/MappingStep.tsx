@@ -33,13 +33,78 @@ export const MappingStep: React.FC<MappingStepProps> = ({
   });
   const [isInitialMappingDone, setIsInitialMappingDone] = useState(false);
 
-  // Simple field matching function
+  // Enhanced findFieldMatch function
+
   const findFieldMatch = useCallback(
     (sourceColumn: string) => {
       const normalizedSource = sourceColumn
         .toLowerCase()
         .replace(/[^a-z0-9]/g, '');
 
+      // Define better matching patterns with priorities
+      const matchPatterns = [
+        // Exact matches (highest priority)
+        {
+          pattern: /^(street|address)$/i,
+          target: 'street_address',
+          confidence: 1.0,
+        },
+        {
+          pattern: /^(firstname|first_name)$/i,
+          target: 'first_name',
+          confidence: 1.0,
+        },
+        {
+          pattern: /^(lastname|last_name)$/i,
+          target: 'last_name',
+          confidence: 1.0,
+        },
+        {
+          pattern: /^(email|emailaddress|email_address)$/i,
+          target: 'email_address',
+          confidence: 1.0,
+        },
+        {
+          pattern: /^(phone|cellphone|cell_phone|homephone|home_phone)$/i,
+          target: 'home_phone',
+          confidence: 0.9,
+        },
+        { pattern: /^(city)$/i, target: 'city', confidence: 1.0 },
+        { pattern: /^(state)$/i, target: 'state', confidence: 1.0 },
+        {
+          pattern: /^(zip|zipcode|zip_code|postal|postalcode)$/i,
+          target: 'zip_code',
+          confidence: 1.0,
+        },
+
+        // Partial matches (medium priority)
+        {
+          pattern: /street|address/i,
+          target: 'street_address',
+          confidence: 0.8,
+        },
+        { pattern: /first/i, target: 'first_name', confidence: 0.8 },
+        { pattern: /last/i, target: 'last_name', confidence: 0.8 },
+        { pattern: /email/i, target: 'email_address', confidence: 0.8 },
+        { pattern: /phone/i, target: 'home_phone', confidence: 0.7 },
+        { pattern: /city/i, target: 'city', confidence: 0.8 },
+        { pattern: /state/i, target: 'state', confidence: 0.8 },
+        { pattern: /zip|postal/i, target: 'zip_code', confidence: 0.8 },
+      ];
+
+      // Check against patterns first
+      for (const { pattern, target, confidence } of matchPatterns) {
+        if (pattern.test(sourceColumn)) {
+          const targetField = availableFields.find(
+            (field) => field.field === target
+          );
+          if (targetField) {
+            return { field: targetField, confidence };
+          }
+        }
+      }
+
+      // Fallback to original logic for other fields
       for (const field of availableFields) {
         const normalizedField = field.field
           .toLowerCase()
@@ -52,21 +117,11 @@ export const MappingStep: React.FC<MappingStepProps> = ({
 
         // Partial match for common patterns
         if (
-          (normalizedSource.includes('first') &&
-            normalizedField.includes('first')) ||
-          (normalizedSource.includes('last') &&
-            normalizedField.includes('last')) ||
-          (normalizedSource.includes('email') &&
-            normalizedField.includes('email')) ||
-          (normalizedSource.includes('phone') &&
-            normalizedField.includes('phone')) ||
-          (normalizedSource.includes('address') &&
-            normalizedField.includes('address')) ||
-          (normalizedSource.includes('city') &&
-            normalizedField.includes('city')) ||
-          (normalizedSource.includes('state') &&
-            normalizedField.includes('state')) ||
-          (normalizedSource.includes('zip') && normalizedField.includes('zip'))
+          (normalizedSource.includes('middle') &&
+            normalizedField.includes('middle')) ||
+          (normalizedSource.includes('birth') &&
+            normalizedField.includes('birth')) ||
+          (normalizedSource.includes('ssn') && normalizedField.includes('ssn'))
         ) {
           return { field, confidence: 0.8 };
         }
@@ -101,6 +156,7 @@ export const MappingStep: React.FC<MappingStepProps> = ({
   ]);
 
   // Calculate mapping statistics
+
   const mappingStats = useMemo(() => {
     const total = fieldMappings.length;
     const mapped = fieldMappings.filter(
@@ -119,13 +175,39 @@ export const MappingStep: React.FC<MappingStepProps> = ({
         )
     );
 
+    // NEW: Check for duplicate mappings
+    const duplicateMappings: { target: string; sources: string[] }[] = [];
+    const targetFieldCounts = new Map<string, string[]>();
+
+    fieldMappings.forEach((mapping) => {
+      if (mapping.targetTable && mapping.targetField) {
+        const targetKey = `${mapping.targetTable}.${mapping.targetField}`;
+        if (targetFieldCounts.has(targetKey)) {
+          targetFieldCounts.get(targetKey)!.push(mapping.sourceColumn);
+        } else {
+          targetFieldCounts.set(targetKey, [mapping.sourceColumn]);
+        }
+      }
+    });
+
+    // Find duplicates
+    for (const [target, sources] of targetFieldCounts) {
+      if (sources.length > 1) {
+        duplicateMappings.push({ target, sources });
+      }
+    }
+
     return {
       total,
       mapped,
       unmapped,
       percentage,
       missingRequiredFields,
-      canProceed: missingRequiredFields.length === 0 && mapped > 0,
+      duplicateMappings, // NEW
+      canProceed:
+        missingRequiredFields.length === 0 &&
+        mapped > 0 &&
+        duplicateMappings.length === 0, // UPDATED
     };
   }, [fieldMappings, availableFields]);
 
@@ -194,6 +276,29 @@ export const MappingStep: React.FC<MappingStepProps> = ({
         </Alert>
       )}
 
+      {/* Warning for duplicate mappings */}
+      {mappingStats.duplicateMappings.length > 0 && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Duplicate Mappings Detected!</strong>
+            <br />
+            Multiple source columns are mapped to the same target field:
+            <ul className="mt-2 list-disc list-inside">
+              {mappingStats.duplicateMappings.map((duplicate, index) => (
+                <li key={index}>
+                  <strong>{duplicate.target}</strong> ← mapped from:{' '}
+                  {duplicate.sources.join(', ')}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2 text-sm">
+              This will cause data loss as one field will overwrite the other.
+              Please fix these mappings before proceeding.
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
       {/* Success message for auto-mapping */}
       {mappingStats.mapped > 0 && (
         <Alert>

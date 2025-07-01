@@ -191,7 +191,6 @@ export class AdvancedValidator {
       };
     });
   }
-
   private detectDuplicates(
     data: string[][],
     fieldMappings: FieldMapping[]
@@ -216,9 +215,10 @@ export class AdvancedValidator {
       ];
     }
 
-    const seen = new Map<string, number[]>();
-    const duplicates: Array<{ rows: number[]; values: string }> = [];
+    // OPTIMIZED ALGORITHM - O(n) instead of O(n²)
+    const keyGroups = new Map<string, number[]>();
 
+    // Single pass through data - O(n) complexity
     for (let i = 1; i < data.length; i++) {
       const key = duplicateIndices
         .map((idx) => {
@@ -251,25 +251,27 @@ export class AdvancedValidator {
         })
         .join('|');
 
-      if (seen.has(key)) {
-        const existingRows = seen.get(key)!;
-        if (duplicates.find((d) => d.values === key)) {
-          duplicates.find((d) => d.values === key)!.rows.push(i + 1);
-        } else {
-          duplicates.push({
-            rows: [...existingRows, i + 1],
-            values: key,
-          });
-        }
+      // O(1) lookup and update instead of O(n) array search
+      if (keyGroups.has(key)) {
+        keyGroups.get(key)!.push(i + 1); // 1-based row numbers
       } else {
-        seen.set(key, [i + 1]);
+        keyGroups.set(key, [i + 1]);
+      }
+    }
+
+    // Filter out non-duplicates (groups with only 1 row) and format results
+    const duplicateGroups: Array<{ rows: number[]; values: string }> = [];
+
+    for (const [key, rows] of keyGroups) {
+      if (rows.length > 1) {
+        duplicateGroups.push({ rows, values: key });
       }
     }
 
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    duplicates.forEach((duplicate) => {
+    duplicateGroups.forEach((duplicate) => {
       const message = `Duplicate found in rows ${duplicate.rows.join(', ')}: "${
         duplicate.values
       }"`;
@@ -290,7 +292,7 @@ export class AdvancedValidator {
         validCount:
           data.length -
           1 -
-          duplicates.reduce((sum, d) => sum + d.rows.length - 1, 0),
+          duplicateGroups.reduce((sum, d) => sum + d.rows.length - 1, 0),
       },
     ];
   }

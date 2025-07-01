@@ -16,6 +16,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   CheckCircle,
   AlertCircle,
+  AlertTriangle,
   Plus,
   Search,
   Wand2,
@@ -166,7 +167,29 @@ export const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
     const unmapped = total - mapped;
     const percentage = total > 0 ? Math.round((mapped / total) * 100) : 0;
 
-    return { total, mapped, unmapped, percentage };
+    // Check for duplicate mappings
+    const duplicateMappings: { target: string; sources: string[] }[] = [];
+    const targetFieldCounts = new Map<string, string[]>();
+
+    fieldMappings.forEach((mapping) => {
+      if (mapping.targetTable && mapping.targetField) {
+        const targetKey = `${mapping.targetTable}.${mapping.targetField}`;
+        if (targetFieldCounts.has(targetKey)) {
+          targetFieldCounts.get(targetKey)!.push(mapping.sourceColumn);
+        } else {
+          targetFieldCounts.set(targetKey, [mapping.sourceColumn]);
+        }
+      }
+    });
+
+    // Find duplicates
+    for (const [target, sources] of targetFieldCounts) {
+      if (sources.length > 1) {
+        duplicateMappings.push({ target, sources });
+      }
+    }
+
+    return { total, mapped, unmapped, percentage, duplicateMappings };
   }, [fieldMappings]);
 
   // Helper functions with explicit types
@@ -283,6 +306,31 @@ export const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
           </div>
           <div className="text-sm text-gray-600">Complete</div>
         </div>
+        {/* Warning for duplicate mappings */}
+        {mappingStats.duplicateMappings &&
+          mappingStats.duplicateMappings.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-center">
+                <AlertTriangle className="h-5 w-5 text-red-500 mr-2" />
+                <div>
+                  <div className="font-medium text-red-800">
+                    Duplicate Mappings Detected!
+                  </div>
+                  <div className="text-sm text-red-700 mt-1">
+                    Multiple source columns are mapped to the same target field:
+                  </div>
+                  <ul className="mt-2 list-disc list-inside text-sm text-red-700">
+                    {mappingStats.duplicateMappings.map((duplicate, index) => (
+                      <li key={index}>
+                        <strong>{duplicate.target}</strong> ←{' '}
+                        {duplicate.sources.join(', ')}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
       </div>
 
       {/* Controls */}
@@ -506,22 +554,45 @@ export const FieldMappingTable: React.FC<FieldMappingTableProps> = ({
                               ))}
                           </SelectContent>
                         </Select>
-
-                        {/* Field Description */}
-                        {targetField && (
-                          <div className="text-xs text-muted-foreground mt-1">
-                            {targetField.description}
-                          </div>
-                        )}
                       </div>
 
                       {/* Status */}
                       <div className="col-span-1 flex flex-col space-y-1">
-                        {isMapped ? (
-                          <CheckCircle className="h-4 w-4 text-green-500" />
-                        ) : (
-                          <AlertCircle className="h-4 w-4 text-orange-500" />
-                        )}
+                        {(() => {
+                          // Check for mapping conflicts
+                          const targetKey =
+                            mapping.targetTable && mapping.targetField
+                              ? `${mapping.targetTable}.${mapping.targetField}`
+                              : null;
+
+                          const hasConflict =
+                            targetKey &&
+                            fieldMappings.filter(
+                              (m) =>
+                                m.targetTable === mapping.targetTable &&
+                                m.targetField === mapping.targetField &&
+                                m.sourceColumn !== mapping.sourceColumn
+                            ).length > 0;
+
+                          if (hasConflict) {
+                            return (
+                              <div className="flex flex-col items-center">
+                                <AlertTriangle className="h-4 w-4 text-red-500" />
+                                <div className="text-xs text-red-600">
+                                  Conflict
+                                </div>
+                              </div>
+                            );
+                          } else if (isMapped) {
+                            return (
+                              <CheckCircle className="h-4 w-4 text-green-500" />
+                            );
+                          } else {
+                            return (
+                              <AlertCircle className="h-4 w-4 text-orange-500" />
+                            );
+                          }
+                        })()}
                       </div>
 
                       {/* Actions */}
