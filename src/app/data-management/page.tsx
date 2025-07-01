@@ -1,7 +1,7 @@
 // src/app/data-management/page.tsx
 'use client';
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -12,6 +12,7 @@ import { MappingStep } from '@/components/DataManagement/steps/MappingStep';
 import { EnhancedValidationStep } from '@/components/DataManagement/steps/EnhancedValidationStep';
 import { ReviewStep } from '@/components/DataManagement/steps/ReviewStep';
 import { DeployStep } from '@/components/DataManagement/steps/DeployStep';
+import SmoothTransition from '@/components/DataManagement/shared/SmoothTransition';
 import { useDataManagement } from '@/hooks/useDataManagement';
 import type {
   WorkflowStep,
@@ -59,6 +60,9 @@ const transformFileDataForStaging = (fileData: FileData | null) => {
 // This is the default export that Next.js expects for a page component
 export default function DataManagementPage() {
   const dataManagement = useDataManagement();
+
+  // Add state for smooth transition
+  const [showTransition, setShowTransition] = useState(false);
 
   const {
     uploadedFiles = [],
@@ -252,11 +256,16 @@ export default function DataManagementPage() {
       if (!handleProcessFile) return;
       try {
         await handleProcessFile(file);
+
+        // After successful processing, show transition instead of jarring jump
+        if (currentStep === 'upload') {
+          setShowTransition(true);
+        }
       } catch (error: unknown) {
         console.error('Error processing file:', error);
       }
     },
-    [handleProcessFile]
+    [handleProcessFile, currentStep]
   );
 
   const handleDeployWrapper = useCallback(async (): Promise<boolean> => {
@@ -310,27 +319,37 @@ export default function DataManagementPage() {
       handleStepNavigation?.(stepOrder[currentIndex - 1]);
     }
   }, [currentStep, handleStepNavigation]);
-  // Add this useEffect for auto-navigation
+
+  // Handle transition completion
+  const handleTransitionComplete = useCallback(() => {
+    setShowTransition(false);
+    clearError?.();
+    clearSuccess?.();
+    handleStepNavigation?.('staging');
+  }, [handleStepNavigation, clearError, clearSuccess]);
+
+  // Handle transition skip
+  const handleTransitionSkip = useCallback(() => {
+    setShowTransition(false);
+    clearError?.();
+    clearSuccess?.();
+    handleStepNavigation?.('staging');
+  }, [handleStepNavigation, clearError, clearSuccess]);
+
+  // REPLACED: Old jarring auto-navigation with smooth transition trigger
   React.useEffect(() => {
     if (
       currentFile?.upload_status === 'staged' &&
       currentStep === 'upload' &&
-      fileData
+      fileData &&
+      !showTransition
     ) {
+      // Small delay before showing transition
       setTimeout(() => {
-        clearError?.(); // Clear any error messages
-        clearSuccess?.(); // Clear success messages
-        handleStepNavigation?.('staging');
-      }, 1000);
+        setShowTransition(true);
+      }, 500);
     }
-  }, [
-    currentFile?.upload_status,
-    currentStep,
-    fileData,
-    handleStepNavigation,
-    clearError,
-    clearSuccess,
-  ]);
+  }, [currentFile?.upload_status, currentStep, fileData, showTransition]);
 
   return (
     <ProtectedRoute>
@@ -352,14 +371,18 @@ export default function DataManagementPage() {
           mappingStats={mappingStats}
           validationStats={validationStats}
           isProcessing={
-            isProcessing || isUploading || isValidating || isDeploying
+            isProcessing ||
+            isUploading ||
+            isValidating ||
+            isDeploying ||
+            showTransition
           }
-          allowNavigation={true}
+          allowNavigation={!showTransition}
           showDetailed={true}
         />
 
-        {/* Global Alerts */}
-        {error && (
+        {/* Global Alerts - Hidden during transition */}
+        {error && !showTransition && (
           <Alert className="mb-6" variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
@@ -374,7 +397,7 @@ export default function DataManagementPage() {
           </Alert>
         )}
 
-        {success && (
+        {success && !showTransition && (
           <Alert className="mb-6" variant="default">
             <CheckCircle className="h-4 w-4" />
             <AlertDescription>
@@ -389,94 +412,111 @@ export default function DataManagementPage() {
           </Alert>
         )}
 
-        {/* Step Content */}
-        {currentStep === 'upload' && (
-          <UploadStep
-            uploadedFiles={uploadedFiles}
-            onFileUpload={handleFileUploadWrapper}
-            onProcessFile={handleProcessFileWrapper}
-            isUploading={isUploading}
-            uploadProgress={uploadProgress}
-          />
+        {/* Step Content - Hidden during transition */}
+        {!showTransition && (
+          <>
+            {currentStep === 'upload' && (
+              <UploadStep
+                uploadedFiles={uploadedFiles}
+                onFileUpload={handleFileUploadWrapper}
+                onProcessFile={handleProcessFileWrapper}
+                isUploading={isUploading}
+                uploadProgress={uploadProgress}
+              />
+            )}
+
+            {currentStep === 'staging' && stagingFileData && (
+              <StagingStep
+                fileData={stagingFileData}
+                isProcessing={isProcessing}
+                onNext={handleNext}
+                onBack={handleBack}
+              />
+            )}
+
+            {currentStep === 'mapping' && fileData && (
+              <MappingStep
+                fileData={fileData}
+                fieldMappings={fieldMappings}
+                availableFields={availableFields as DatabaseField[]}
+                onUpdateMapping={handleUpdateMapping || (() => {})}
+                onAddCustomField={handleAddCustomFieldWrapper}
+                onNext={handleNext}
+                onBack={handleBack}
+                isProcessing={isProcessing}
+              />
+            )}
+
+            {currentStep === 'validation' && (
+              <EnhancedValidationStep
+                fieldMappings={fieldMappings}
+                validationResults={validationResults}
+                fileData={
+                  fileData
+                    ? {
+                        headers: fileData.headers,
+                        rows: fileData.rows.map((row) =>
+                          row.map((cell) => String(cell || ''))
+                        ),
+                        totalRows: fileData.totalRows,
+                      }
+                    : null
+                }
+                onValidate={handleValidation || (() => Promise.resolve(false))}
+                onNext={handleNext}
+                onBack={handleBack}
+                isValidating={isValidating}
+                validationProgress={validationProgress}
+              />
+            )}
+
+            {currentStep === 'review' && reviewStepFile && (
+              <ReviewStep
+                fileData={fileData}
+                fieldMappings={fieldMappings}
+                validationResults={validationResults}
+                currentFile={reviewStepFile}
+                onDeploy={handleDeployWrapper}
+                onBack={handleBack}
+                isDeploying={isDeploying}
+              />
+            )}
+
+            {currentStep === 'deploy' && componentUploadedFile && (
+              <DeployStep
+                currentFile={componentUploadedFile}
+                onStartNewImport={() => handleStepNavigation?.('upload')}
+                onViewData={handleViewData}
+                onDownloadReport={handleDownloadReport}
+                onBack={handleBack}
+              />
+            )}
+
+            {/* Fallback for missing data */}
+            {!fileData &&
+              (currentStep === 'staging' || currentStep === 'mapping') && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    No file data available. Please upload and process a file
+                    first.
+                  </AlertDescription>
+                </Alert>
+              )}
+          </>
         )}
 
-        {currentStep === 'staging' && stagingFileData && (
-          <StagingStep
-            fileData={stagingFileData}
-            isProcessing={isProcessing}
-            onNext={handleNext}
-            onBack={handleBack}
+        {/* Smooth Transition Overlay */}
+        {showTransition && (
+          <SmoothTransition
+            isVisible={true}
+            onTransitionComplete={handleTransitionComplete}
+            onSkip={handleTransitionSkip}
+            fileName={currentFile?.original_filename || 'Unknown File'}
+            fileSize={currentFile?.file_size || 0}
+            totalRows={currentFile?.total_rows || 0}
           />
         )}
-
-        {currentStep === 'mapping' && fileData && (
-          <MappingStep
-            fileData={fileData}
-            fieldMappings={fieldMappings}
-            availableFields={availableFields as DatabaseField[]}
-            onUpdateMapping={handleUpdateMapping || (() => {})}
-            onAddCustomField={handleAddCustomFieldWrapper}
-            onNext={handleNext}
-            onBack={handleBack}
-            isProcessing={isProcessing}
-          />
-        )}
-
-        {currentStep === 'validation' && (
-          <EnhancedValidationStep
-            fieldMappings={fieldMappings}
-            validationResults={validationResults}
-            fileData={
-              fileData
-                ? {
-                    headers: fileData.headers,
-                    rows: fileData.rows.map((row) =>
-                      row.map((cell) => String(cell || ''))
-                    ),
-                    totalRows: fileData.totalRows,
-                  }
-                : null
-            }
-            onValidate={handleValidation || (() => Promise.resolve(false))}
-            onNext={handleNext}
-            onBack={handleBack}
-            isValidating={isValidating}
-            validationProgress={validationProgress}
-          />
-        )}
-
-        {currentStep === 'review' && reviewStepFile && (
-          <ReviewStep
-            fileData={fileData}
-            fieldMappings={fieldMappings}
-            validationResults={validationResults}
-            currentFile={reviewStepFile}
-            onDeploy={handleDeployWrapper}
-            onBack={handleBack}
-            isDeploying={isDeploying}
-          />
-        )}
-
-        {currentStep === 'deploy' && componentUploadedFile && (
-          <DeployStep
-            currentFile={componentUploadedFile}
-            onStartNewImport={() => handleStepNavigation?.('upload')}
-            onViewData={handleViewData}
-            onDownloadReport={handleDownloadReport}
-            onBack={handleBack}
-          />
-        )}
-
-        {/* Fallback for missing data */}
-        {!fileData &&
-          (currentStep === 'staging' || currentStep === 'mapping') && (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                No file data available. Please upload and process a file first.
-              </AlertDescription>
-            </Alert>
-          )}
       </div>
     </ProtectedRoute>
   );
