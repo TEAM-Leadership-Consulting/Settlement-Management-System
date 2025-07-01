@@ -32,6 +32,7 @@ interface ReviewStepFile {
   file_id: string;
   upload_id: number;
   uploaded_at: string;
+  file_size: number;
 }
 
 // Helper function to transform FileData to match StagingStep expectations
@@ -168,6 +169,7 @@ export default function DataManagementPage() {
       file_id: currentFile.file_id,
       upload_id: currentFile.upload_id,
       uploaded_at: currentFile.uploaded_at,
+      file_size: currentFile.file_size || 0,
     };
   }, [currentFile]);
 
@@ -378,7 +380,7 @@ export default function DataManagementPage() {
             showTransition
           }
           allowNavigation={!showTransition}
-          showDetailed={true}
+          showDetailed={false}
         />
 
         {/* Global Alerts - Hidden during transition */}

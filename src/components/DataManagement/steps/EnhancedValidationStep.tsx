@@ -112,8 +112,6 @@ interface EnhancedValidationStepProps {
   validationProgress?: number;
 }
 
-// Replace the existing useValidationTimeEstimate function (lines 139-184) with this optimized version:
-
 const useValidationTimeEstimate = (
   fileData: { totalRows: number } | null,
   validationSettings: {
@@ -188,6 +186,7 @@ const useValidationTimeEstimate = (
     return Math.max(10000, Math.ceil(totalSeconds * 1000));
   }, [fileData, validationSettings]);
 };
+
 const SmoothValidationProgress: React.FC<{
   isValidating: boolean;
   actualProgress: number;
@@ -382,14 +381,15 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
   isValidating = false,
   validationProgress = 0,
 }) => {
+  // RESTORED: Smart default settings - only check when data is detected
   const [validationSettings, setValidationSettings] =
     useState<ValidationSettings>({
-      // Performance Optimizations - Auto-detect from mappings
+      // Performance Optimizations - Auto-detect from mappings (don't default any to true)
       validateEmails: false,
       validatePhones: false,
       validateDates: false,
       validatePostalCodes: false,
-      validateCurrency: false,
+      validateCurrency: false, // CHANGED BACK: Don't default to true
       validateSSN: false,
       validateTaxId: false,
 
@@ -410,7 +410,7 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
       // Data Quality
       handleMissingData: 'skip',
       defaultValue: '',
-      trimWhitespace: true,
+      trimWhitespace: false, // Keep this as unchecked by default
       standardizeCase: 'none',
       removeSpecialCharacters: false,
 
@@ -425,10 +425,12 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
       sampleValidation: false,
       sampleSize: 10,
     });
+
   const estimatedTimeMs = useValidationTimeEstimate(
     fileData,
     validationSettings
   );
+
   // Auto-detect validation types needed based on field mappings
   const detectedValidationTypes = useMemo(() => {
     const types = {
@@ -468,12 +470,36 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
     return fileData?.headers || [];
   }, [fileData]);
 
-  // Validation summary
+  // FIXED: Updated validation summary calculation
   const validationSummary = useMemo(() => {
+    // First check if we have mapped fields to validate
     const mappedFields = fieldMappings.filter(
       (m) => m.targetTable && m.targetField
     );
-    const totalFields = mappedFields.length;
+
+    if (mappedFields.length === 0) {
+      return {
+        totalFields: 0,
+        errorFields: 0,
+        passedFields: 0,
+        canProceed: false,
+        validationScore: 0,
+      };
+    }
+
+    // If no validation has been run yet, show mapped fields count
+    if (validationResults.length === 0) {
+      return {
+        totalFields: mappedFields.length,
+        errorFields: 0,
+        passedFields: 0,
+        canProceed: false,
+        validationScore: 0,
+      };
+    }
+
+    // After validation has been run, calculate based on validation results
+    const totalValidationResults = validationResults.length;
     const errorFields = validationResults.filter(
       (r) => r.errors.length > 0
     ).length;
@@ -482,15 +508,22 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
     ).length;
     const canProceed = errorFields === 0 && validationResults.length > 0;
 
+    // FIXED: Calculate success rate based on actual validation results
+    const validationScore =
+      totalValidationResults > 0
+        ? (passedFields / totalValidationResults) * 100
+        : 0;
+
     return {
-      totalFields,
+      totalFields: totalValidationResults, // Show validation checks run after validation
       errorFields,
       passedFields,
       canProceed,
-      validationScore: totalFields > 0 ? (passedFields / totalFields) * 100 : 0,
+      validationScore,
     };
-  }, [fieldMappings, validationResults]);
+  }, [fieldMappings, validationResults]); // Keep both dependencies
 
+  // FIXED: Calculate active validations for performance display
   const activeValidations = useMemo(() => {
     return [
       validationSettings.validateEmails,
@@ -503,21 +536,21 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
     ].filter(Boolean).length;
   }, [validationSettings]);
 
-  // Auto-set validation settings based on detected types
+  // RESTORED: Original auto-set validation settings (this was working well before)
   React.useEffect(() => {
     setValidationSettings((prev) => ({
       ...prev,
+      // Auto-enable validations when relevant fields are detected
       validateEmails: detectedValidationTypes.emails > 0,
       validatePhones: detectedValidationTypes.phones > 0,
       validateDates: detectedValidationTypes.dates > 0,
       validatePostalCodes: detectedValidationTypes.postalCodes > 0,
-      validateCurrency: detectedValidationTypes.currency > 0,
+      validateCurrency: detectedValidationTypes.currency > 0, // Only check if currency fields found
       validateSSN: detectedValidationTypes.ssn > 0,
       validateTaxId: detectedValidationTypes.taxId > 0,
     }));
   }, [detectedValidationTypes]);
 
-  // Remove unused imports and variables
   const updateSetting = <K extends keyof ValidationSettings>(
     key: K,
     value: ValidationSettings[K]
@@ -545,9 +578,6 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
     );
   };
 
-  // Rough estimation based on rows and active validations
-  // Replace the getEstimatedTime function (lines 527-563) with this optimized version:
-
   const getEstimatedTime = () => {
     if (!fileData) return '< 1 minute';
 
@@ -558,7 +588,10 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
       ? Math.ceil(rows * (validationSettings.sampleSize / 100))
       : rows;
 
-    const activeValidations = [
+    let estimatedSeconds = 0;
+
+    // OPTIMIZED: Only count validations that are actually enabled
+    const enabledValidations = [
       validationSettings.validateEmails,
       validationSettings.validatePhones,
       validationSettings.validateDates,
@@ -568,12 +601,10 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
       validationSettings.validateTaxId,
     ].filter(Boolean).length;
 
-    let estimatedSeconds = 0;
-
-    // Field validation time (optimized)
-    if (activeValidations > 0) {
-      const validationTime = effectiveRows / 10000; // Much faster now
-      estimatedSeconds += validationTime * activeValidations;
+    // Field validation time (much faster now)
+    if (enabledValidations > 0) {
+      const validationTime = effectiveRows / 15000; // Increased speed estimate
+      estimatedSeconds += validationTime * enabledValidations;
     }
 
     // Optimized duplicate detection time
@@ -581,21 +612,21 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
       let duplicateTime: number;
 
       if (validationSettings.duplicateMatchType === 'fuzzy') {
-        duplicateTime = effectiveRows / 1000; // Still slower but manageable
+        duplicateTime = effectiveRows / 2000; // Improved fuzzy performance
       } else {
-        duplicateTime = effectiveRows / 15000; // Much faster with hash optimization
+        duplicateTime = effectiveRows / 25000; // Much faster exact matching
       }
 
       estimatedSeconds += duplicateTime;
     }
 
-    // Add processing overhead and safety margin
-    estimatedSeconds = estimatedSeconds * 1.3; // 30% buffer
+    // Reduced processing overhead
+    estimatedSeconds = estimatedSeconds * 1.1; // Only 10% buffer instead of 30%
 
     // Format the time
-    if (estimatedSeconds < 10) return '< 10 seconds';
-    if (estimatedSeconds < 60) return `${Math.ceil(estimatedSeconds)} seconds`;
-    if (estimatedSeconds < 300)
+    if (estimatedSeconds < 5) return '< 5 seconds';
+    if (estimatedSeconds < 30) return `${Math.ceil(estimatedSeconds)} seconds`;
+    if (estimatedSeconds < 120)
       return `${Math.ceil(estimatedSeconds / 60)} minute(s)`;
     return `${Math.ceil(estimatedSeconds / 60)} minutes`;
   };
@@ -801,6 +832,7 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
                   50-80% for large datasets.
                 </AlertDescription>
               </Alert>
+
               {/* Performance Recommendations */}
               {fileData && fileData.totalRows > 50000 && (
                 <Alert className="mt-4">
@@ -862,7 +894,6 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
             <CardContent className="space-y-4">
               {/* Two column layout */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Left column - Controls */}
                 <div className="space-y-4">
                   <div className="flex items-center space-x-2">
                     <Checkbox
@@ -1226,7 +1257,6 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
       </Tabs>
 
       {/* Validation Progress */}
-
       <SmoothValidationProgress
         isValidating={isValidating}
         actualProgress={validationProgress}
@@ -1335,7 +1365,8 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
       )}
 
       {/* Requirements Check */}
-      {validationSummary.totalFields === 0 && (
+      {fieldMappings.filter((m) => m.targetTable && m.targetField).length ===
+        0 && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
@@ -1358,7 +1389,11 @@ export const EnhancedValidationStep: React.FC<EnhancedValidationStepProps> = ({
         <div className="flex space-x-2">
           <Button
             onClick={handleValidate}
-            disabled={isValidating || validationSummary.totalFields === 0}
+            disabled={
+              isValidating ||
+              fieldMappings.filter((m) => m.targetTable && m.targetField)
+                .length === 0
+            }
             className="min-w-[120px]"
           >
             {isValidating ? (

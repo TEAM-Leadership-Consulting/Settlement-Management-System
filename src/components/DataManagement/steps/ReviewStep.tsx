@@ -25,7 +25,6 @@ import {
   ArrowLeft,
   Database,
   FileCheck,
-  Shield,
   Rocket,
   Settings,
   Info,
@@ -37,6 +36,13 @@ import {
   ValidationResult,
 } from '@/types/dataManagement';
 
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
 interface ReviewStepProps {
   fileData: FileData | null;
   fieldMappings: FieldMapping[];
@@ -48,6 +54,7 @@ interface ReviewStepProps {
     file_id: string;
     upload_id: number;
     uploaded_at: string;
+    file_size: number;
   } | null;
   onDeploy: () => void;
   onBack: () => void;
@@ -306,13 +313,21 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Total Columns:</span>
+                  <span className="font-medium">
+                    {fileData?.headers.length || 0} columns
+                  </span>
+                </div>
+
+                <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">File Size:</span>
                   <span className="font-medium">
-                    {fileData
-                      ? `${fileData.headers.length} columns`
+                    {currentFile.file_size
+                      ? formatFileSize(currentFile.file_size)
                       : 'Unknown'}
                   </span>
                 </div>
+
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Uploaded:</span>
                   <span className="font-medium">
@@ -372,51 +387,6 @@ export const ReviewStep: React.FC<ReviewStepProps> = ({
               </CardContent>
             </Card>
           </div>
-
-          {/* Validation Results Summary */}
-          {validationResults.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Shield className="h-5 w-5 mr-2" />
-                  Validation Results
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="text-center p-3 bg-green-50 rounded">
-                    <div className="font-semibold text-green-600">
-                      {
-                        validationResults.filter((r) => r.errors.length === 0)
-                          .length
-                      }
-                    </div>
-                    <div className="text-sm text-muted-foreground">Passed</div>
-                  </div>
-                  <div className="text-center p-3 bg-yellow-50 rounded">
-                    <div className="font-semibold text-yellow-600">
-                      {validationResults.reduce(
-                        (sum, r) => sum + r.warnings.length,
-                        0
-                      )}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      Warnings
-                    </div>
-                  </div>
-                  <div className="text-center p-3 bg-red-50 rounded">
-                    <div className="font-semibold text-red-600">
-                      {validationResults.reduce(
-                        (sum, r) => sum + r.errors.length,
-                        0
-                      )}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Errors</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </TabsContent>
 
         {/* Field Mappings Tab */}
