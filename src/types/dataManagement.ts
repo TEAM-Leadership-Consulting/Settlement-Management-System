@@ -48,29 +48,33 @@ export interface TemplateMetadata {
 }
 
 export interface ColumnType {
-  name: string;
-  column?: string;
-  type: DataType | string;
-  sample: string[];
-  nullCount: number;
+  column?: string; // For compatibility with your hook
+  name?: string; // For compatibility with StagingStep
+  detectedType?: string; // For compatibility with your hook
+  type?: DataType | string; // For compatibility with StagingStep
+  samples?: string[]; // For compatibility with your hook
+  sample?: unknown[]; // For compatibility with StagingStep
+  nullCount?: number;
   confidence: number;
   detectedPatterns?: string[];
-  patterns?: string[];
+  patterns?: string[]; // For compatibility with StagingStep
   suggestions?: string[];
   issues?: string[];
   qualityScore?: number;
 }
 
+// FIXED: FileData interface to match your usage
 export interface FileData {
   headers: string[];
-  rows: string[][];
+  rows: unknown[][]; // Changed from string[][] to unknown[][]
   totalRows: number;
-  fileName: string;
-  fileType: 'csv' | 'excel';
+  preview?: unknown[][]; // Made optional
+  fileName?: string; // Made optional since your hook doesn't always set it
+  fileType?: 'csv' | 'excel'; // Made optional
   columnTypes: ColumnType[];
 }
 
-// FIXED: Made confidence and transformationRule optional
+// FIXED: Made confidence optional and added status
 export interface FieldMapping {
   sourceColumn: string;
   targetTable: string;
@@ -85,10 +89,68 @@ export interface FieldMapping {
 
 export interface ValidationResult {
   field: string;
-  errors: string[];
-  warnings: string[];
+  errors: (string | { message: string })[]; // Updated to match EnhancedValidationStep
+  warnings: (string | { message: string })[]; // Updated to match EnhancedValidationStep
   recordCount: number;
   validCount?: number;
+}
+
+export interface ValidationSettings {
+  // Performance Optimizations
+  validateEmails: boolean;
+  validatePhones: boolean;
+  validateDates: boolean;
+  validatePostalCodes: boolean;
+  validateCurrency: boolean;
+  validateSSN: boolean;
+  validateTaxId: boolean;
+
+  // Duplicate Detection
+  enableDuplicateDetection: boolean;
+  duplicateMatchType: '100_percent' | 'fuzzy' | 'custom';
+  duplicateAction: 'skip' | 'error' | 'merge' | 'flag';
+  duplicateColumns: string[];
+  fuzzyThreshold: number;
+
+  // Custom Duplicate Rules
+  customDuplicateRules: {
+    exactMatchColumns: string[];
+    fuzzyMatchColumns: string[];
+    ignoreColumns: string[];
+  };
+
+  // Data Quality
+  handleMissingData: 'skip' | 'error' | 'default' | 'remove_row';
+  defaultValue: string;
+  trimWhitespace: boolean;
+  standardizeCase: 'none' | 'upper' | 'lower' | 'title';
+  removeSpecialCharacters: boolean;
+
+  // Validation Strictness
+  strictValidation: boolean;
+  allowPartialMatches: boolean;
+  skipEmptyFields: boolean;
+
+  // Performance Settings
+  batchSize: number;
+  maxErrors: number;
+  sampleValidation: boolean;
+  sampleSize: number;
+}
+
+export interface ValidationStepProps extends BaseStepProps {
+  fieldMappings: FieldMapping[];
+  validationResults: ValidationResult[];
+  fileData: {
+    headers: string[];
+    rows: string[][];
+    totalRows: number;
+  } | null;
+  onValidate: (settings?: ValidationSettings) => Promise<boolean>;
+  onNext: () => void;
+  onBack: () => void;
+  isValidating?: boolean;
+  validationProgress?: number;
 }
 
 export interface AvailableField {
@@ -106,6 +168,7 @@ export interface UploadedFile {
   upload_id: number;
   file_id: string;
   original_filename: string;
+  stored_filename?: string; // Made optional since not always present
   file_size: number;
   file_type: string;
   upload_status:
@@ -118,6 +181,7 @@ export interface UploadedFile {
     | 'failed'
     | 'processing';
   total_rows: number | null;
+  preview_data?: string | null; // Made optional
   uploaded_at: string;
   processed_at?: string;
   error_message?: string;
@@ -126,6 +190,7 @@ export interface UploadedFile {
   // Additional optional properties
   id?: string;
   file_path?: string;
+  created_at?: string; // Made optional
   updated_at?: string;
   case_id?: string;
   user_id?: string;
@@ -194,7 +259,23 @@ export interface UploadStepProps {
 }
 
 export interface StagingStepProps {
-  fileData: FileData;
+  fileData: {
+    headers: string[];
+    rows: string[][];
+    totalRows: number;
+    fileName: string;
+    fileType: 'csv' | 'excel';
+    columnTypes: Array<{
+      name: string;
+      type: string;
+      sample: string[];
+      nullCount: number;
+      confidence: number;
+      patterns?: string[];
+      suggestions?: string[];
+      detectedPatterns?: string[];
+    }>;
+  };
   isProcessing?: boolean;
   onNext: () => void;
   onBack: () => void;
@@ -209,15 +290,6 @@ export interface MappingStepProps extends BaseStepProps {
   onSaveMappingTemplate?: TemplateSaveCallback;
   onLoadMappingTemplate?: TemplateCallback;
   mappingTemplates?: TemplateMetadata[];
-}
-
-export interface ValidationStepProps {
-  fieldMappings: FieldMapping[];
-  validationResults: ValidationResult[];
-  onValidate: () => Promise<boolean>;
-  onNext: () => void;
-  onBack: () => void;
-  isValidating?: boolean;
 }
 
 export interface ReviewStepProps {
@@ -237,7 +309,6 @@ export interface ReviewStepProps {
   isDeploying?: boolean;
 }
 
-// FIXED: Updated DeployStepProps to match actual component - includes all needed fields
 export interface DeployStepProps {
   currentFile: {
     upload_id: number;
@@ -291,10 +362,11 @@ export interface UseDataManagementReturn {
   error: string | null;
   success: string | null;
   uploadProgress: number;
+  validationProgress: number; // ADDED: Missing property
   availableFields: DatabaseField[];
 
   // Actions
-  handleFileUpload: (file: File) => Promise<boolean>;
+  handleFileUpload: (file: File) => Promise<UploadedFile>; // FIXED: Return type
   handleProcessFile: (file: UploadedFile) => Promise<boolean>;
   handleUpdateMapping: (
     sourceColumn: string,
@@ -302,7 +374,7 @@ export interface UseDataManagementReturn {
     targetField: string
   ) => void;
   handleAddCustomField: (field: DatabaseField) => void;
-  handleValidation: () => Promise<boolean>;
+  handleValidation: (settings?: ValidationSettings) => Promise<boolean>; // FIXED: Added settings parameter
   handleDeployment: () => Promise<boolean>;
   handleStepNavigation: (step: WorkflowStep) => void;
   clearError: () => void;

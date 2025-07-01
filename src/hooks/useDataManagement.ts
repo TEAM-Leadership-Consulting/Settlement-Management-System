@@ -1,83 +1,24 @@
+// src/hooks/useDataManagement.ts
 'use client';
-declare global {
-  interface Window {
-    fs: {
-      readFile: (
-        filename: string,
-        options: { encoding: string }
-      ) => Promise<string>;
-    };
-  }
-}
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
+import { supabase } from '@/lib/supabase';
+import Papa from 'papaparse';
+import { AdvancedValidator } from '@/lib/advancedValidation';
 import type {
-  ColumnType,
+  UploadedFile,
   FileData,
   FieldMapping,
   ValidationResult,
-  UploadedFile,
+  ValidationSettings,
   WorkflowStep,
-  UseDataManagementReturn,
+  ColumnType,
 } from '@/types/dataManagement';
 import type { DatabaseField } from '@/constants/databaseSchema';
+import { getAllDatabaseFields } from '@/constants/databaseSchema';
 
-// Column type detection function
-const detectColumnType = (values: string[]): string => {
-  const nonEmptyValues = values.filter(
-    (val) => val && String(val).trim() !== ''
-  );
-
-  if (nonEmptyValues.length === 0) return 'text';
-
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (nonEmptyValues.some((val) => emailPattern.test(String(val))))
-    return 'email';
-
-  const phonePattern = /^[\+]?[1-9][\d]{0,15}$/;
-  if (
-    nonEmptyValues.some((val) =>
-      phonePattern.test(String(val).replace(/[-.\s\(\)]/g, ''))
-    )
-  )
-    return 'phone';
-
-  if (nonEmptyValues.some((val) => !isNaN(Date.parse(String(val)))))
-    return 'date';
-
-  const numberPattern = /^\d+(\.\d+)?$/;
-  if (nonEmptyValues.some((val) => numberPattern.test(String(val))))
-    return 'number';
-
-  const currencyPattern = /^\$?\d+(\.\d{2})?$/;
-  if (nonEmptyValues.some((val) => currencyPattern.test(String(val))))
-    return 'currency';
-
-  return 'text';
-};
-
-// Enhanced CSV parsing function
-const parseCSVLine = (line: string): string[] => {
-  const result: string[] = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    if (char === '"') {
-      inQuotes = !inQuotes;
-    } else if (char === ',' && !inQuotes) {
-      result.push(current.trim());
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-  result.push(current.trim());
-  return result;
-};
-
-export const useDataManagement = (): UseDataManagementReturn => {
+export const useDataManagement = () => {
+  // State management
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [fileData, setFileData] = useState<FileData | null>(null);
   const [currentFile, setCurrentFile] = useState<UploadedFile | null>(null);
@@ -86,527 +27,330 @@ export const useDataManagement = (): UseDataManagementReturn => {
     ValidationResult[]
   >([]);
   const [currentStep, setCurrentStep] = useState<WorkflowStep>('upload');
+
+  // Loading states
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
+
+  // Progress tracking
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [validationProgress, setValidationProgress] = useState(0);
+
+  // Messages
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
 
-  // Store the actual file objects for processing using ref
-  const fileObjectsRef = useRef<Map<string, File>>(new Map());
+  // Available database fields from schema
+  const [availableFields] = useState<DatabaseField[]>(getAllDatabaseFields());
 
-  // Updated availableFields to match DatabaseField interface
-  const availableFields: DatabaseField[] = [
-    {
-      table: 'individual_parties',
-      field: 'first_name',
-      type: 'text',
-      description: 'First Name',
-      required: false,
-      category: 'Personal Info',
-    },
-    {
-      table: 'individual_parties',
-      field: 'last_name',
-      type: 'text',
-      description: 'Last Name',
-      required: false,
-      category: 'Personal Info',
-    },
-    {
-      table: 'individual_parties',
-      field: 'email_address',
-      type: 'email',
-      description: 'Email Address',
-      required: false,
-      category: 'Contact',
-    },
-    {
-      table: 'individual_parties',
-      field: 'home_phone',
-      type: 'phone',
-      description: 'Phone Number',
-      required: false,
-      category: 'Contact',
-    },
-    {
-      table: 'individual_parties',
-      field: 'zip_code',
-      type: 'text',
-      description: 'ZIP Code',
-      required: false,
-      category: 'Address',
-    },
-    {
-      table: 'business_parties',
-      field: 'business_name',
-      type: 'text',
-      description: 'Business Name',
-      required: false,
-      category: 'Business Info',
-    },
-    {
-      table: 'business_parties',
-      field: 'ein',
-      type: 'text',
-      description: 'EIN',
-      required: false,
-      category: 'Business Info',
-    },
-    {
-      table: 'payments',
-      field: 'amount_due',
-      type: 'decimal',
-      description: 'Amount Due',
-      required: false,
-      category: 'Payment',
-    },
-  ];
-
-  // Read actual file content using multiple approaches
-  const parseFileContent = useCallback(
-    async (file: UploadedFile, actualFileObject?: File): Promise<FileData> => {
-      console.log(
-        '🔍 DEBUG: Starting parseFileContent for:',
-        file.original_filename
-      );
-      console.log('🔍 DEBUG: File ID:', file.file_id);
-      console.log('🔍 DEBUG: Actual file object provided:', !!actualFileObject);
-      console.log(
-        '🔍 DEBUG: Available file objects:',
-        Array.from(fileObjectsRef.current.keys())
-      );
-
+  // Helper function to parse CSV content
+  const parseCSVContent = useCallback(
+    (csvText: string): { headers: string[]; rows: string[][] } => {
       try {
-        let fileContent = '';
-
-        // Try to use the provided file object first, then check stored objects
-        const fileToUse =
-          actualFileObject || fileObjectsRef.current.get(file.file_id);
-
-        if (fileToUse) {
-          console.log('✅ DEBUG: Found file object, reading content...');
-          console.log('🔍 DEBUG: File size:', fileToUse.size, 'bytes');
-          fileContent = await fileToUse.text();
-          console.log(
-            '✅ DEBUG: Successfully read file content, length:',
-            fileContent.length
-          );
-        } else {
-          console.log(
-            '❌ DEBUG: No file object found, trying window.fs.readFile...'
-          );
-          // Fallback: try window.fs.readFile
-          try {
-            fileContent = await window.fs.readFile(file.original_filename, {
-              encoding: 'utf8',
-            });
-            console.log('✅ DEBUG: window.fs.readFile worked');
-          } catch (error) {
-            console.log('❌ DEBUG: window.fs.readFile failed:', error);
-            throw new Error('Could not read file content');
-          }
-        }
-
-        // Parse the file content based on type
-        let headers: string[] = [];
-        let rows: string[][] = [];
-
-        if (
-          file.file_type.includes('csv') ||
-          file.original_filename.toLowerCase().endsWith('.csv')
-        ) {
-          console.log('📄 DEBUG: Parsing as CSV file...');
-          // Parse CSV
-          const lines = fileContent
-            .split('\n')
-            .filter((line: string) => line.trim())
-            .map((line) => line.replace(/\r$/, '')); // Remove carriage returns
-
-          console.log('📄 DEBUG: Found', lines.length, 'lines in CSV');
-
-          if (lines.length === 0) {
-            throw new Error('CSV file is empty');
-          }
-
-          headers = parseCSVLine(lines[0]);
-          console.log('📄 DEBUG: Headers:', headers);
-
-          rows = lines.slice(1).map((line: string) => parseCSVLine(line));
-
-          // Filter out empty rows
-          rows = rows.filter((row) => row.some((cell) => cell.trim() !== ''));
-          console.log('📄 DEBUG: Found', rows.length, 'data rows');
-        } else {
-          console.log('📄 DEBUG: Excel file detected');
-          // For Excel files, we'd need a different parser
-          throw new Error(
-            'Excel file parsing not yet implemented - please use CSV format'
-          );
-        }
-
-        const columnTypes: ColumnType[] = headers.map((header, index) => {
-          const columnValues = rows.map((row) => row[index] || '');
-          const detectedType = detectColumnType(columnValues);
-
-          return {
-            name: header,
-            type: detectedType as ColumnType['type'],
-            sample: columnValues.slice(0, 5).filter((val) => val.trim() !== ''),
-            nullCount: columnValues.filter((val) => !val || val.trim() === '')
-              .length,
-            confidence: 0.8,
-            suggestions: [`Auto-detected as ${detectedType}`],
-          };
+        const result = Papa.parse(csvText, {
+          header: false,
+          skipEmptyLines: true,
+          dynamicTyping: false,
+          delimitersToGuess: [',', '\t', '|', ';'],
         });
 
-        console.log(
-          '✅ DEBUG: Successfully parsed file - Headers:',
-          headers.length,
-          'Rows:',
-          rows.length
-        );
-
-        return {
-          headers,
-          rows,
-          totalRows: rows.length,
-          fileName: file.original_filename,
-          fileType: file.file_type.includes('csv') ? 'csv' : 'excel',
-          columnTypes,
-        };
-      } catch (error) {
-        // Enhanced fallback with more realistic data
-        console.warn(
-          '⚠️ DEBUG: File parsing failed, using enhanced mock data:',
-          error
-        );
-
-        const isBusinessFile =
-          file.original_filename.toLowerCase().includes('business') ||
-          file.original_filename.toLowerCase().includes('company') ||
-          file.original_filename.toLowerCase().includes('corp');
-
-        let headers: string[];
-        let mockRowCount = 100; // Default to 100 rows instead of 10
-
-        // Try to extract row count from filename if available
-        const rowCountMatch =
-          file.original_filename.match(/(\d+)[\s_-]?rows?/i);
-        if (rowCountMatch) {
-          mockRowCount = parseInt(rowCountMatch[1], 10);
+        if (result.errors && result.errors.length > 0) {
+          console.warn('CSV parsing warnings:', result.errors);
         }
 
-        if (isBusinessFile) {
-          headers = [
-            'business_name',
-            'dba_name',
-            'ein',
-            'contact_person',
-            'email',
-            'phone',
-            'address',
-            'city',
-            'state',
-            'zip',
-            'amount_owed',
-            'payment_status',
-            'industry',
-            'employees',
-            'revenue',
-          ];
-        } else {
-          headers = [
-            'first_name',
-            'last_name',
-            'middle_initial',
-            'email',
-            'phone',
-            'address',
-            'city',
-            'state',
-            'zip',
-            'amount_owed',
-            'date_of_birth',
-            'ssn_last_4',
-            'account_number',
-            'balance',
-          ];
+        if (!result.data || result.data.length === 0) {
+          throw new Error('No data found in CSV file');
         }
 
-        const rows = Array.from({ length: mockRowCount }, (_, i) => {
-          if (isBusinessFile) {
-            return [
-              `Business Corp ${i + 1}`,
-              `DBA Name ${i + 1}`,
-              `12-345678${String(i).padStart(2, '0')}`,
-              `Contact Person ${i + 1}`,
-              `business${i + 1}@example.com`,
-              `555-${String(i + 100).padStart(3, '0')}-${String(
-                i + 1000
-              ).padStart(4, '0')}`,
-              `${i + 100} Business St`,
-              `City${i + 1}`,
-              ['CA', 'NY', 'TX', 'FL', 'IL', 'WA', 'OR', 'NV', 'AZ', 'CO'][
-                i % 10
-              ],
-              `${String(i + 10000).padStart(5, '0')}`,
-              `${((i + 1) * 1000 + Math.random() * 5000).toFixed(2)}`,
-              ['Pending', 'Paid', 'Processing', 'Overdue'][i % 4],
-              [
-                'Technology',
-                'Healthcare',
-                'Finance',
-                'Retail',
-                'Manufacturing',
-              ][i % 5],
-              `${Math.floor(Math.random() * 500) + 10}`,
-              `${((i + 1) * 50000 + Math.random() * 100000).toFixed(2)}`,
-            ];
-          } else {
-            return [
-              `FirstName${i + 1}`,
-              `LastName${i + 1}`,
-              String.fromCharCode(65 + (i % 26)),
-              `person${i + 1}@example.com`,
-              `555-${String(i + 200).padStart(3, '0')}-${String(
-                i + 2000
-              ).padStart(4, '0')}`,
-              `${i + 500} Main St`,
-              `City${i + 1}`,
-              ['CA', 'NY', 'TX', 'FL', 'IL', 'WA', 'OR', 'NV', 'AZ', 'CO'][
-                i % 10
-              ],
-              `${String(i + 20000).padStart(5, '0')}`,
-              `${((i + 1) * 500 + Math.random() * 2000).toFixed(2)}`,
-              `${Math.floor(Math.random() * 12) + 1}/${
-                Math.floor(Math.random() * 28) + 1
-              }/19${70 + Math.floor(Math.random() * 30)}`,
-              `${String(Math.floor(Math.random() * 9000) + 1000)}`,
-              `ACC${String(i + 1).padStart(6, '0')}`,
-              `${((i + 1) * 100 + Math.random() * 1000).toFixed(2)}`,
-            ];
-          }
-        }) as string[][];
+        const [headerRow, ...dataRows] = result.data as string[][];
+        const headers = headerRow
+          .map((h) => h?.toString().trim())
+          .filter(Boolean);
+        const rows = dataRows
+          .filter((row) => row && row.some((cell) => cell?.toString().trim()))
+          .map((row) =>
+            headers.map((_, index) => row[index]?.toString().trim() || '')
+          );
 
-        const columnTypes: ColumnType[] = headers.map((header, index) => {
-          let type: ColumnType['type'] = 'text';
-          let confidence = 0.8;
-
-          if (header.includes('email')) {
-            type = 'email';
-            confidence = 0.95;
-          } else if (header.includes('phone')) {
-            type = 'phone';
-            confidence = 0.9;
-          } else if (header.includes('date') || header.includes('birth')) {
-            type = 'date';
-            confidence = 0.85;
-          } else if (
-            header.includes('amount') ||
-            header.includes('cost') ||
-            header.includes('revenue') ||
-            header.includes('balance') ||
-            header.includes('owed')
-          ) {
-            type = 'currency';
-            confidence = 0.9;
-          } else if (header.includes('zip') || header.includes('postal')) {
-            type = 'postal_code';
-            confidence = 0.92;
-          } else if (
-            header.includes('count') ||
-            header.includes('number') ||
-            header.includes('id') ||
-            header.includes('employees')
-          ) {
-            type = 'number';
-            confidence = 0.88;
-          }
-
-          return {
-            name: header,
-            type,
-            sample: rows.slice(0, 5).map((row) => row[index] || ''),
-            nullCount: Math.floor(Math.random() * 3),
-            confidence,
-            suggestions: [
-              `Auto-detected as ${type}`,
-              `Consider ${header} mapping`,
-            ],
-          };
-        });
-
-        return {
-          headers,
-          rows,
-          totalRows: rows.length,
-          fileName: file.original_filename,
-          fileType: file.file_type.includes('csv') ? 'csv' : 'excel',
-          columnTypes,
-        };
+        return { headers, rows };
+      } catch (parseError) {
+        throw new Error(
+          `Failed to parse CSV: ${
+            parseError instanceof Error ? parseError.message : 'Unknown error'
+          }`
+        );
       }
     },
     []
   );
 
+  // Helper function to detect column types
+  const detectColumnType = useCallback(
+    (samples: string[]): { type: string; confidence: number } => {
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const phonePattern = /^[\+]?[1-9]?[\d\s\-\(\)\.]{7,15}$/;
+      const datePattern = /^\d{1,4}[-\/]\d{1,2}[-\/]\d{1,4}$/;
+      const numberPattern = /^\d+\.?\d*$/;
+
+      let emailCount = 0;
+      let phoneCount = 0;
+      let dateCount = 0;
+      let numberCount = 0;
+
+      samples.forEach((sample) => {
+        if (emailPattern.test(sample)) emailCount++;
+        if (phonePattern.test(sample)) phoneCount++;
+        if (datePattern.test(sample)) dateCount++;
+        if (numberPattern.test(sample)) numberCount++;
+      });
+
+      const total = samples.length;
+      if (emailCount / total > 0.8)
+        return { type: 'email', confidence: emailCount / total };
+      if (phoneCount / total > 0.8)
+        return { type: 'phone', confidence: phoneCount / total };
+      if (dateCount / total > 0.8)
+        return { type: 'date', confidence: dateCount / total };
+      if (numberCount / total > 0.8)
+        return { type: 'number', confidence: numberCount / total };
+
+      return { type: 'text', confidence: 1.0 };
+    },
+    []
+  );
+
+  // Process file handler (MOVED BEFORE handleFileUpload to fix declaration order)
   const handleProcessFile = useCallback(
     async (file: UploadedFile): Promise<boolean> => {
       setIsProcessing(true);
       setError(null);
 
       try {
-        setCurrentFile((prev) =>
-          prev ? { ...prev, upload_status: 'processing' } : null
-        );
+        // Download file content from Supabase Storage
+        const { data: fileBlob, error: downloadError } = await supabase.storage
+          .from('data-uploads')
+          .download(file.file_id);
 
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        if (downloadError) throw downloadError;
 
-        // Get the file object from storage
-        const actualFileObject = fileObjectsRef.current.get(file.file_id);
-        const parsedFileData = await parseFileContent(file, actualFileObject);
+        // Read file content
+        const fileText = await fileBlob.text();
+        const { headers, rows } = parseCSVContent(fileText);
 
+        // Detect column types
+        const columnTypes: ColumnType[] = headers.map((header, index) => {
+          const samples = rows
+            .slice(0, 10)
+            .map((row) => row[index])
+            .filter(Boolean);
+          const { type, confidence } = detectColumnType(samples);
+
+          return {
+            column: header,
+            detectedType: type,
+            confidence,
+            samples: samples.slice(0, 3),
+          };
+        });
+
+        const processedData: FileData = {
+          headers,
+          rows,
+          totalRows: rows.length,
+          preview: rows.slice(0, 5),
+          columnTypes,
+        };
+
+        // Create initial field mappings
+        const initialMappings: FieldMapping[] = headers.map((header) => ({
+          sourceColumn: header,
+          targetTable: '',
+          targetField: '',
+          required: false,
+          validated: false,
+          confidence: 0.8,
+        }));
+
+        // Update file status in database
+        const { error: updateError } = await supabase
+          .from('data-uploads')
+          .update({
+            upload_status: 'staged',
+            total_rows: rows.length,
+            metadata: JSON.stringify(processedData.preview),
+            last_modified: new Date().toISOString(),
+          })
+          .eq('upload_id', file.upload_id);
+
+        if (updateError) throw updateError;
+
+        // Update local state
         const updatedFile: UploadedFile = {
           ...file,
           upload_status: 'staged',
-          total_rows: parsedFileData.totalRows,
-          processed_at: new Date().toISOString(),
+          total_rows: rows.length,
+          preview_data: JSON.stringify(processedData.preview),
+          updated_at: new Date().toISOString(),
         };
 
-        setFileData(parsedFileData);
+        setFileData(processedData);
+        setFieldMappings(initialMappings);
         setCurrentFile(updatedFile);
-
         setUploadedFiles((prev) =>
           prev.map((f) => (f.upload_id === file.upload_id ? updatedFile : f))
         );
-
-        const initialMappings: FieldMapping[] = parsedFileData.headers.map(
-          (header, index) => ({
-            sourceColumn: header,
-            targetTable: '',
-            targetField: '',
-            required: false,
-            validated: false,
-            confidence: parsedFileData.columnTypes[index]?.confidence || 0.5,
-          })
-        );
-
-        setFieldMappings(initialMappings);
-        setSuccess(
-          `File processed successfully - ${parsedFileData.totalRows} rows detected. Click Next to review.`
-        );
+        setSuccess('File uploaded and processed successfully');
 
         return true;
       } catch (error: unknown) {
         const errorMessage =
-          error instanceof Error ? error.message : 'Processing failed';
-
-        const failedFile: UploadedFile = {
-          ...file,
-          upload_status: 'failed',
-          error_message: errorMessage,
-          processed_at: new Date().toISOString(),
-        };
-
-        setCurrentFile(failedFile);
-        setUploadedFiles((prev) =>
-          prev.map((f) => (f.upload_id === file.upload_id ? failedFile : f))
-        );
-
+          error instanceof Error ? error.message : 'Failed to process file';
         setError(errorMessage);
+
+        // Update file status to failed
+        if (file.upload_id) {
+          await supabase
+            .from('data-uploads')
+            .update({
+              upload_status: 'failed',
+              error_message: errorMessage,
+              last_modified: new Date().toISOString(),
+            })
+            .eq('upload_id', file.upload_id);
+        }
+
         return false;
       } finally {
         setIsProcessing(false);
       }
     },
-    [parseFileContent]
+    [parseCSVContent, detectColumnType]
   );
 
+  // File upload handler
+  // File upload handler
   const handleFileUpload = useCallback(
-    async (file: File): Promise<boolean> => {
+    async (file: File): Promise<UploadedFile> => {
       setIsUploading(true);
       setUploadProgress(0);
       setError(null);
 
       try {
-        const maxSize = 500 * 1024 * 1024;
-        if (file.size > maxSize) {
-          throw new Error(
-            `File size exceeds maximum limit of 500MB. Your file is ${(
-              file.size /
-              (1024 * 1024)
-            ).toFixed(2)}MB.`
-          );
-        }
-
-        const progressInterval = setInterval(() => {
-          setUploadProgress((prev) => Math.min(prev + 10, 90));
-        }, 100);
-
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        clearInterval(progressInterval);
-        setUploadProgress(100);
-
-        const fileId = `file_${Date.now()}`;
-        const uploadedFile: UploadedFile = {
-          upload_id: Date.now(),
-          file_id: fileId,
-          original_filename: file.name,
-          file_size: file.size,
-          file_type: file.type,
-          upload_status: 'uploaded',
-          total_rows: null,
-          uploaded_at: new Date().toISOString(),
-        };
-
-        // Store the actual file object for later processing
-        console.log('💾 DEBUG: Storing file object with ID:', fileId);
-        fileObjectsRef.current.set(fileId, file);
-        console.log(
-          '💾 DEBUG: File stored, map now has keys:',
-          Array.from(fileObjectsRef.current.keys())
-        );
-
-        setUploadedFiles((prev) => {
-          const updatedFiles = prev.map((f) => {
-            if (
-              f.upload_status === 'staged' ||
-              f.upload_status === 'mapped' ||
-              f.upload_status === 'validated' ||
-              f.upload_status === 'ready'
-            ) {
-              return { ...f, upload_status: 'deployed' } as UploadedFile;
-            }
-            return f;
-          });
-          return [...updatedFiles, uploadedFile];
+        // Add detailed logging
+        console.log('=== FILE UPLOAD START ===');
+        console.log('File details:', {
+          name: file.name,
+          size: file.size,
+          type: file.type,
         });
 
+        // Check authentication
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+        console.log('Current user:', user);
+        console.log('Auth error:', authError);
+        console.log('User ID:', user?.id);
+
+        // Upload file to Supabase Storage
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random()
+          .toString(36)
+          .substring(2)}.${fileExt}`;
+        const filePath = fileName;
+
+        console.log('Generated filename:', fileName);
+        console.log('Upload path:', filePath);
+
+        setUploadProgress(25);
+
+        console.log('Starting storage upload...');
+        const { error: uploadError } = await supabase.storage
+          .from('data-uploads')
+          .upload(filePath, file);
+
+        console.log('Storage upload result:', { error: uploadError });
+        if (uploadError) throw uploadError;
+
+        setUploadProgress(50);
+
+        // Create file record in database
+        const insertData = {
+          original_filename: file.name,
+          file_id: fileName,
+          file_size: file.size,
+          file_type: file.type,
+          upload_status: 'uploaded' as const,
+        };
+
+        console.log('About to insert into database:', insertData);
+        console.log('Table name: data-uploads');
+
+        const { data: fileRecord, error: dbError } = await supabase
+          .from('data-uploads')
+          .insert(insertData)
+          .select()
+          .single();
+
+        console.log('Database insert result:', {
+          data: fileRecord,
+          error: dbError,
+        });
+
+        if (dbError) {
+          console.error('Database error details:', {
+            message: dbError.message,
+            code: dbError.code,
+            hint: dbError.hint,
+            details: dbError.details,
+          });
+          throw dbError;
+        }
+
+        const uploadedFile: UploadedFile = {
+          file_id: fileRecord.file_id,
+          upload_id: fileRecord.upload_id,
+          original_filename: fileRecord.original_filename,
+          stored_filename: fileRecord.file_id,
+          file_size: fileRecord.file_size,
+          file_type: fileRecord.file_type,
+          upload_status: fileRecord.upload_status,
+          uploaded_at: fileRecord.uploaded_at,
+          total_rows: fileRecord.total_rows,
+          preview_data: fileRecord.metadata,
+          error_message: fileRecord.error_message,
+          created_at: fileRecord.created_date,
+          updated_at: fileRecord.last_modified,
+        };
+
+        setUploadedFiles((prev) => [...prev, uploadedFile]);
         setCurrentFile(uploadedFile);
-        setSuccess('File uploaded successfully - processing...');
 
-        // Process the file immediately but don't change steps
-        setTimeout(async () => {
-          await handleProcessFile(uploadedFile);
-        }, 200);
+        setUploadProgress(100);
 
-        return true;
+        // Auto-process the file (restore this)
+        await handleProcessFile(uploadedFile);
+
+        return uploadedFile;
       } catch (error: unknown) {
         const errorMessage =
           error instanceof Error ? error.message : 'Failed to upload file';
         setError(errorMessage);
-        return false;
+        throw error;
       } finally {
         setIsUploading(false);
-        setUploadProgress(0);
+        setTimeout(() => {
+          setUploadProgress(0);
+        }, 1500);
       }
     },
-    [handleProcessFile]
+    [handleProcessFile] // Add this back to dependencies
   );
 
+  // Update field mapping
   const handleUpdateMapping = useCallback(
     (sourceColumn: string, targetTable: string, targetField: string) => {
       setFieldMappings((prev) => {
@@ -632,54 +376,187 @@ export const useDataManagement = (): UseDataManagementReturn => {
     []
   );
 
-  const handleValidation = useCallback(async (): Promise<boolean> => {
-    setIsValidating(true);
-    setError(null);
+  // Validation handler with settings support
+  const handleValidation = useCallback(
+    async (settings?: ValidationSettings): Promise<boolean> => {
+      setIsValidating(true);
+      setValidationProgress(0);
+      setError(null);
 
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      try {
+        if (!fileData || !currentFile) {
+          throw new Error('No file data available for validation');
+        }
 
-      const results: ValidationResult[] = fieldMappings
-        .filter((m) => m.targetTable && m.targetField)
-        .map((mapping) => ({
-          field: mapping.sourceColumn,
-          errors: Math.random() > 0.8 ? ['Sample validation error'] : [],
-          warnings: Math.random() > 0.7 ? ['Sample validation warning'] : [],
-          recordCount: fileData?.totalRows || 0,
-        }));
+        const mappedFields = fieldMappings.filter(
+          (m) => m.targetTable && m.targetField
+        );
+        if (mappedFields.length === 0) {
+          throw new Error('No field mappings configured');
+        }
 
-      setValidationResults(results);
-      setSuccess('Validation completed successfully');
-      return true;
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Validation failed';
-      setError(errorMessage);
-      return false;
-    } finally {
-      setIsValidating(false);
-    }
-  }, [fieldMappings, fileData]);
+        // Default settings if none provided
+        const validationSettings: ValidationSettings = settings || {
+          validateEmails: true,
+          validatePhones: true,
+          validateDates: true,
+          validatePostalCodes: false,
+          validateCurrency: false,
+          validateSSN: false,
+          validateTaxId: false,
+          enableDuplicateDetection: true,
+          duplicateMatchType: '100_percent',
+          duplicateAction: 'flag',
+          duplicateColumns: [],
+          fuzzyThreshold: 85,
+          customDuplicateRules: {
+            exactMatchColumns: [],
+            fuzzyMatchColumns: [],
+            ignoreColumns: [],
+          },
+          handleMissingData: 'skip',
+          defaultValue: '',
+          trimWhitespace: true,
+          standardizeCase: 'none',
+          removeSpecialCharacters: false,
+          strictValidation: false,
+          allowPartialMatches: true,
+          skipEmptyFields: true,
+          batchSize: 1000,
+          maxErrors: 100,
+          sampleValidation: false,
+          sampleSize: 10,
+        };
 
+        setValidationProgress(25);
+
+        // Use Advanced Validator
+        const validator = new AdvancedValidator(validationSettings);
+
+        // Convert fileData to format expected by validator
+        const dataArray: string[][] = [
+          fileData.headers,
+          ...fileData.rows.map((row) => row.map((cell) => String(cell || ''))),
+        ];
+
+        setValidationProgress(50);
+
+        const results = await validator.validateData(dataArray, mappedFields);
+
+        setValidationProgress(75);
+
+        setValidationResults(results);
+
+        // Update file status
+        const hasErrors = results.some((r) => r.errors.length > 0);
+        const newStatus = hasErrors ? 'failed' : 'validated';
+
+        await supabase
+          .from('data-uploads')
+          .update({
+            upload_status: newStatus,
+            last_modified: new Date().toISOString(),
+          })
+          .eq('upload_id', currentFile.upload_id);
+
+        setCurrentFile((prev) =>
+          prev ? { ...prev, upload_status: newStatus } : null
+        );
+
+        setValidationProgress(100);
+
+        if (hasErrors) {
+          setError(
+            'Validation completed with errors. Please review before proceeding.'
+          );
+        } else {
+          setSuccess('Validation completed successfully');
+        }
+
+        return !hasErrors;
+      } catch (error: unknown) {
+        const errorMessage =
+          error instanceof Error ? error.message : 'Validation failed';
+        setError(errorMessage);
+        return false;
+      } finally {
+        setIsValidating(false);
+        setValidationProgress(0);
+      }
+    },
+    [fieldMappings, fileData, currentFile]
+  );
+
+  // Deployment handler
   const handleDeployment = useCallback(async (): Promise<boolean> => {
     setIsDeploying(true);
     setError(null);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
-      if (currentFile) {
-        const deployedFile: UploadedFile = {
-          ...currentFile,
-          upload_status: 'deployed',
-        };
-        setCurrentFile(deployedFile);
-        setUploadedFiles((prev) =>
-          prev.map((f) =>
-            f.upload_id === currentFile.upload_id ? deployedFile : f
-          )
-        );
+      if (!fileData || !currentFile) {
+        throw new Error('No file data available for deployment');
       }
+
+      const mappedFields = fieldMappings.filter(
+        (m) => m.targetTable && m.targetField
+      );
+      if (mappedFields.length === 0) {
+        throw new Error('No field mappings configured');
+      }
+
+      // Group mappings by target table
+      const tableGroups = mappedFields.reduce((acc, mapping) => {
+        if (!acc[mapping.targetTable]) {
+          acc[mapping.targetTable] = [];
+        }
+        acc[mapping.targetTable].push(mapping);
+        return acc;
+      }, {} as Record<string, FieldMapping[]>);
+
+      // Process each table
+      for (const [tableName, mappings] of Object.entries(tableGroups)) {
+        const records = fileData.rows.map((row) => {
+          const record: Record<string, unknown> = {};
+
+          mappings.forEach((mapping) => {
+            const columnIndex = fileData.headers.indexOf(mapping.sourceColumn);
+            if (columnIndex !== -1) {
+              record[mapping.targetField] = row[columnIndex] || null;
+            }
+          });
+
+          return record;
+        });
+
+        // Insert records into target table
+        const { error: insertError } = await supabase
+          .from(tableName)
+          .insert(records);
+
+        if (insertError) throw insertError;
+      }
+
+      // Update file status
+      await supabase
+        .from('data-uploads')
+        .update({
+          upload_status: 'deployed',
+          last_modified: new Date().toISOString(),
+        })
+        .eq('upload_id', currentFile.upload_id);
+
+      const deployedFile: UploadedFile = {
+        ...currentFile,
+        upload_status: 'deployed',
+        updated_at: new Date().toISOString(),
+      };
+
+      setCurrentFile(deployedFile);
+      setUploadedFiles((prev) =>
+        prev.map((f) =>
+          f.upload_id === currentFile.upload_id ? deployedFile : f
+        )
+      );
 
       setSuccess('Data deployed successfully to production');
       return true;
@@ -691,23 +568,28 @@ export const useDataManagement = (): UseDataManagementReturn => {
     } finally {
       setIsDeploying(false);
     }
-  }, [currentFile]);
+  }, [currentFile, fileData, fieldMappings]);
 
+  // Add custom field handler
   const handleAddCustomField = useCallback((field: DatabaseField) => {
+    // This would typically save to database and update available fields
     console.log('Adding custom field:', field);
     setSuccess('Custom field added successfully');
   }, []);
 
+  // Step navigation
   const handleStepNavigation = useCallback((step: WorkflowStep) => {
     setCurrentStep(step);
     setError(null);
     setSuccess(null);
   }, []);
 
+  // Clear messages
   const clearError = useCallback(() => setError(null), []);
   const clearSuccess = useCallback(() => setSuccess(null), []);
 
   return {
+    // State
     uploadedFiles,
     fileData,
     currentFile,
@@ -721,7 +603,10 @@ export const useDataManagement = (): UseDataManagementReturn => {
     error,
     success,
     uploadProgress,
+    validationProgress,
     availableFields,
+
+    // Actions
     handleFileUpload,
     handleProcessFile,
     handleUpdateMapping,

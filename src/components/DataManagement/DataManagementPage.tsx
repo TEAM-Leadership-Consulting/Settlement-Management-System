@@ -9,7 +9,7 @@ import { WorkflowProgress } from '@/components/DataManagement/shared/WorkflowPro
 import { UploadStep } from '@/components/DataManagement/steps/UploadStep';
 import { StagingStep } from '@/components/DataManagement/steps/StagingStep';
 import { MappingStep } from '@/components/DataManagement/steps/MappingStep';
-import { ValidationStep } from '@/components/DataManagement/steps/ValidationStep';
+import { EnhancedValidationStep } from '@/components/DataManagement/steps/EnhancedValidationStep';
 import { ReviewStep } from '@/components/DataManagement/steps/ReviewStep';
 import { DeployStep } from '@/components/DataManagement/steps/DeployStep';
 import { useDataManagement } from '@/hooks/useDataManagement';
@@ -20,6 +20,7 @@ import type {
   ValidationStats,
   WorkflowProgressFile,
   DeployStepProps,
+  FileData,
 } from '@/types/dataManagement';
 import type { DatabaseField } from '@/constants/databaseSchema';
 
@@ -35,6 +36,29 @@ interface ReviewStepFile {
   upload_id: number;
   uploaded_at: string;
 }
+
+// Helper function to transform FileData to match StagingStep expectations
+const transformFileDataForStaging = (fileData: FileData | null) => {
+  if (!fileData) return null;
+
+  return {
+    headers: fileData.headers,
+    rows: fileData.rows.map((row) => row.map((cell) => String(cell || ''))), // Convert unknown[][] to string[][]
+    totalRows: fileData.totalRows,
+    fileName: fileData.fileName || 'unknown',
+    fileType: (fileData.fileType || 'csv') as 'csv' | 'excel',
+    columnTypes: fileData.columnTypes.map((col) => ({
+      name: col.column || col.name || '',
+      type: col.detectedType || col.type || 'text',
+      sample: (col.samples || col.sample || []).map((s) => String(s || '')),
+      nullCount: col.nullCount || 0,
+      confidence: col.confidence || 0,
+      patterns: col.detectedPatterns || col.patterns || [],
+      suggestions: col.suggestions || [],
+      detectedPatterns: col.detectedPatterns || col.patterns || [],
+    })),
+  };
+};
 
 export const DataManagementPage: React.FC<DataManagementPageProps> = () => {
   const dataManagement = useDataManagement();
@@ -53,6 +77,7 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = () => {
     error = null,
     success = null,
     uploadProgress = 0,
+    validationProgress = 0,
     availableFields = [],
     handleFileUpload,
     handleProcessFile,
@@ -166,6 +191,11 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = () => {
     };
   }, [currentFile]);
 
+  // Transform fileData for StagingStep
+  const stagingFileData = useMemo(() => {
+    return transformFileDataForStaging(fileData);
+  }, [fileData]);
+
   // Calculate mapping statistics for WorkflowProgress
   const mappingStats = useMemo((): MappingStats => {
     if (!fieldMappings?.length)
@@ -231,16 +261,6 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = () => {
     },
     [handleProcessFile]
   );
-
-  const handleValidateWrapper = useCallback(async (): Promise<boolean> => {
-    if (!handleValidation) return false;
-    try {
-      return await handleValidation();
-    } catch (error: unknown) {
-      console.error('Validation failed:', error);
-      return false;
-    }
-  }, [handleValidation]);
 
   const handleDeployWrapper = useCallback(async (): Promise<boolean> => {
     if (!handleDeployment) return false;
@@ -362,9 +382,9 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = () => {
           />
         )}
 
-        {currentStep === 'staging' && fileData && (
+        {currentStep === 'staging' && stagingFileData && (
           <StagingStep
-            fileData={fileData}
+            fileData={stagingFileData}
             isProcessing={isProcessing}
             onNext={handleNext}
             onBack={handleBack}
@@ -384,24 +404,26 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = () => {
           />
         )}
 
-        {currentStep === 'deploy' && componentUploadedFile && (
-          <DeployStep
-            currentFile={componentUploadedFile}
-            onStartNewImport={() => handleStepNavigation?.('upload')}
-            onViewData={handleViewData}
-            onDownloadReport={handleDownloadReport}
-            onBack={handleBack}
-          />
-        )}
-
         {currentStep === 'validation' && (
-          <ValidationStep
+          <EnhancedValidationStep
             fieldMappings={fieldMappings}
             validationResults={validationResults}
-            onValidate={handleValidateWrapper}
+            fileData={
+              fileData
+                ? {
+                    headers: fileData.headers,
+                    rows: fileData.rows.map((row) =>
+                      row.map((cell) => String(cell || ''))
+                    ),
+                    totalRows: fileData.totalRows,
+                  }
+                : null
+            }
+            onValidate={handleValidation || (() => Promise.resolve(false))}
             onNext={handleNext}
             onBack={handleBack}
             isValidating={isValidating}
+            validationProgress={validationProgress}
           />
         )}
 
@@ -414,6 +436,16 @@ export const DataManagementPage: React.FC<DataManagementPageProps> = () => {
             onDeploy={handleDeployWrapper}
             onBack={handleBack}
             isDeploying={isDeploying}
+          />
+        )}
+
+        {currentStep === 'deploy' && componentUploadedFile && (
+          <DeployStep
+            currentFile={componentUploadedFile}
+            onStartNewImport={() => handleStepNavigation?.('upload')}
+            onViewData={handleViewData}
+            onDownloadReport={handleDownloadReport}
+            onBack={handleBack}
           />
         )}
 
